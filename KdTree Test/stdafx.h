@@ -25,6 +25,8 @@
 #define _WIN32_IE 0x0600	// Change this to the appropriate value to target other versions of IE.
 #endif
 
+#define _HAS_EXCEPTIONS 0
+
 #define WIN32_LEAN_AND_MEAN		// Exclude rarely-used stuff from Windows headers
 // Windows Header Files:
 #include <windows.h>
@@ -38,9 +40,6 @@
 // TODO: reference additional headers your program requires here
 #include <immintrin.h>
 
-#include <d3d9.h>
-#include <d3dx9.h>
-
 #include <list>
 #include <algorithm>
 #include <map>
@@ -48,6 +47,3 @@
 #include <vector>
 #include <set>
 #include <stack>
-
-#pragma comment(lib, "d3d9.lib")
-#pragma comment(lib, "d3dx9.lib")

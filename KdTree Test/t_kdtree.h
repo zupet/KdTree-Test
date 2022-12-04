@@ -37,9 +37,9 @@ struct TAABB
 	float		minimum[3];
 	float		maximum[3];
 
-	D3DXVECTOR3	CalcCenter() const;
+	TVector	CalcCenter() const;
 	float		CalcRadius() const;
-	D3DXVECTOR3	CalcSize() const;
+	TVector	CalcSize() const;
 };
 
 typedef	std::vector<TAABB>		aabb_list;
@@ -88,14 +88,14 @@ struct TTriangle
 
 		THit(const TTriangle & triangle);
 
-		bool	HitTest(const D3DXVECTOR3& orig, const D3DXVECTOR3& dir, HitResult* result) const;
-		bool	OcclusionTest(const D3DXVECTOR3& orig, const D3DXVECTOR3& dir) const;
+		bool	HitTest(const TVector& orig, const TVector& dir, HitResult* result) const;
+		bool	OcclusionTest(const TVector& orig, const TVector& dir) const;
 
-		__m128	HitTest4(__m128 mask, const TPoint4& orig, const D3DXVECTOR3& dir, HitResult4* result) const;
-		__m128	OcclusionTest4(__m128 mask, const TPoint4& orig, const D3DXVECTOR3& dir) const;
+		__m128	HitTest4(__m128 mask, const TPoint4& orig, const TVector& dir, HitResult4* result) const;
+		__m128	OcclusionTest4(__m128 mask, const TPoint4& orig, const TVector& dir) const;
 
-		__m256	HitTest8(__m256 mask, const TPoint8& orig, const D3DXVECTOR3& dir, HitResult8* result) const;
-		__m256	OcclusionTest8(const __m256& mask, const TPoint8& orig, const D3DXVECTOR3& dir) const;
+		__m256	HitTest8(__m256 mask, const TPoint8& orig, const TVector& dir, HitResult8* result) const;
+		__m256	OcclusionTest8(const __m256& mask, const TPoint8& orig, const TVector& dir) const;
 
 		float nu; //used to store normal data
 		float nv; //used to store normal data
@@ -111,18 +111,18 @@ struct TTriangle
 
 	TTriangle() {}
 
-	TTriangle(const D3DXVECTOR3& p0, const D3DXVECTOR3& p1, const D3DXVECTOR3& p2);
+	TTriangle(const TVector& p0, const TVector& p1, const TVector& p2);
 
 	TAABB	GetAABB() const;
 	bool	IntersectTest(const TAABB& aabb) const;
 
-	bool	NearestTest(const D3DXVECTOR3& orig, float radius, HitResult* result) const;
+	bool	NearestTest(const TVector& orig, float radius, HitResult* result) const;
 	__m128	NearestTest4(__m128 mask, const TPoint4& orig, __m128 radius, HitResult4* result) const;
 	__m256	NearestTest8(const __m256& mask, const TPoint8& orig, const __m256& radius, HitResult8* result) const;
 
-	D3DXVECTOR3 pos0;
-	D3DXVECTOR3 pos1;
-	D3DXVECTOR3 pos2;
+	TVector pos0;
+	TVector pos1;
+	TVector pos2;
 };
 
 /*---------------------------------------------------------------------------*/ 
@@ -257,16 +257,16 @@ public:
 	TObject&		GetObject(uint offset);
 
 	void			BuildTree(UINT depth=UINT_MAX);
-	bool			HitTest(const D3DXVECTOR3& orig, const D3DXVECTOR3& dir, HitResult* result) const;
-	bool			OcclusionTest(const D3DXVECTOR3& orig, const D3DXVECTOR3& dir) const;
-	bool			NearestTest(const D3DXVECTOR3& orig, float radius, HitResult* result) const;
+	bool			HitTest(const TVector& orig, const TVector& dir, HitResult* result) const;
+	bool			OcclusionTest(const TVector& orig, const TVector& dir) const;
+	bool			NearestTest(const TVector& orig, float radius, HitResult* result) const;
 
-	__m128			HitTest4(__m128 mask, const TPoint4& orig, const D3DXVECTOR3& dir, HitResult4* result) const;
-	__m128			OcclusionTest4(__m128 mask, const TPoint4& orig, const D3DXVECTOR3& dir) const;
+	__m128			HitTest4(__m128 mask, const TPoint4& orig, const TVector& dir, HitResult4* result) const;
+	__m128			OcclusionTest4(__m128 mask, const TPoint4& orig, const TVector& dir) const;
 	__m128			NearestTest4(__m128 mask, const TPoint4& orig, float radius, HitResult4* result) const;
 
-	__m256			HitTest8(const __m256& mask, const TPoint8& orig, const D3DXVECTOR3& dir, HitResult8* result) const;
-	__m256			OcclusionTest8(const __m256& mask, const TPoint8& orig, const D3DXVECTOR3& dir) const;
+	__m256			HitTest8(const __m256& mask, const TPoint8& orig, const TVector& dir, HitResult8* result) const;
+	__m256			OcclusionTest8(const __m256& mask, const TPoint8& orig, const TVector& dir) const;
 	__m256			NearestTest8(const __m256& mask, const TPoint8& orig, float radius, HitResult8* result) const;
 
 	const TAABB&	GetAABB() const { return m_aabb; }

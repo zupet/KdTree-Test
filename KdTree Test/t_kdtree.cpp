@@ -10,25 +10,25 @@ int g_normalMiss = 0;
 int g_edgeMiss = 0;
 
 /*---------------------------------------------------------------------------*/ 
-static float CalcDistance(const D3DXVECTOR3& a, const D3DXVECTOR3& b, const D3DXVECTOR3& orig, float* u)
+static float CalcDistance(const TVector& a, const TVector& b, const TVector& orig, float* u)
 {
-	D3DXVECTOR3 d = b - a;
+	TVector d = b - a;
 
 	*u = ( (orig.x-a.x) * d.x + (orig.y-a.y) * d.y  + (orig.z-a.z) * d.z) / (d.x * d.x + d.y * d.y + d.z * d.z);
 
 	if(0 < (*u) && (*u) < 1)
 	{
 		/* 점이 Edge 의 유효 범위에 들었다. */ 
-		D3DXVECTOR3 p = a + d*(*u);
+		TVector p = a + d*(*u);
 
-		return D3DXVec3Length(&(orig - p));
+		return TLength(&(orig - p));
 	}
 	else
 	{
 		/* 점이 선분의 범위를 넘었으므로 윈점과 거리 측정 */ 
 		*u = 0;
 
-		return D3DXVec3Length(&(orig - a));
+		return TLength(&(orig - a));
 	}
 }
 
@@ -120,7 +120,7 @@ void TAABB::AddAABB(const TAABB& aabb)
 /*---------------------------------------------------------------------------*/ 
 TAABB TAABB::SplitLeft(int n, float split) const
 {
-	D3DXVECTOR3 temp(maximum);
+	TVector temp(maximum);
 
 	temp[n] = split;
 
@@ -130,7 +130,7 @@ TAABB TAABB::SplitLeft(int n, float split) const
 /*---------------------------------------------------------------------------*/ 
 TAABB TAABB::SplitRight(int n, float split) const
 {
-	D3DXVECTOR3 temp(minimum);
+	TVector temp(minimum);
 
 	temp[n] = split;
 
@@ -251,27 +251,27 @@ TAABB TAABB::operator+(const float* pos0) const
 }
 
 /*---------------------------------------------------------------------------*/ 
-D3DXVECTOR3 TAABB::CalcCenter() const
+TVector TAABB::CalcCenter() const
 {
-	return ( D3DXVECTOR3(maximum) + D3DXVECTOR3(minimum) ) / 2;
+	return ( TVector(maximum) + TVector(minimum) ) / 2;
 }
 
 /*---------------------------------------------------------------------------*/ 
 float TAABB::CalcRadius() const
 {
-	return D3DXVec3Length(&(D3DXVECTOR3(maximum[0]-minimum[0], maximum[1]-minimum[1], maximum[2]-minimum[2])));
+	return TLength(&(TVector(maximum[0]-minimum[0], maximum[1]-minimum[1], maximum[2]-minimum[2])));
 }
 
 /*---------------------------------------------------------------------------*/ 
-D3DXVECTOR3 TAABB::CalcSize() const
+TVector TAABB::CalcSize() const
 {
-	return ( D3DXVECTOR3(maximum) - D3DXVECTOR3(minimum) );
+	return ( TVector(maximum) - TVector(minimum) );
 }
 
 /*---------------------------------------------------------------------------*/ 
 /*                                                                           */ 
 /*---------------------------------------------------------------------------*/ 
-TTriangle::TTriangle(const D3DXVECTOR3& p0, const D3DXVECTOR3& p1, const D3DXVECTOR3& p2)
+TTriangle::TTriangle(const TVector& p0, const TVector& p1, const TVector& p2)
 {
 	pos0 = p0;
 	pos1 = p1;
@@ -281,11 +281,11 @@ TTriangle::TTriangle(const D3DXVECTOR3& p0, const D3DXVECTOR3& p1, const D3DXVEC
 /*---------------------------------------------------------------------------*/ 
 TTriangle::THit::THit(const TTriangle & triangle)
 {
-	D3DXVECTOR3 edge1 = triangle.pos1 - triangle.pos0;
-    D3DXVECTOR3 edge2 = triangle.pos2 - triangle.pos0;
+	TVector edge1 = triangle.pos1 - triangle.pos0;
+    TVector edge2 = triangle.pos2 - triangle.pos0;
 
-	D3DXVECTOR3 normal;
-	D3DXVec3Cross(&normal, &edge1, &edge2);
+	TVector normal;
+	TCross(&normal, &edge1, &edge2);
 
 	int u,v,w;
 	if(abs(normal.x) < abs(normal.y))
@@ -383,35 +383,35 @@ bool TTriangle::IntersectTest(const TAABB& aabb) const
 	++g_test;
 
 	// we will do separating axis test.
-	D3DXVECTOR3 pointsAABB[8] = {	D3DXVECTOR3(aabb.minimum[0], aabb.minimum[1], aabb.minimum[2]),
-									D3DXVECTOR3(aabb.minimum[0], aabb.minimum[1], aabb.maximum[2]),
-									D3DXVECTOR3(aabb.minimum[0], aabb.maximum[1], aabb.minimum[2]),
-									D3DXVECTOR3(aabb.minimum[0], aabb.maximum[1], aabb.maximum[2]),
-									D3DXVECTOR3(aabb.maximum[0], aabb.minimum[1], aabb.minimum[2]),
-									D3DXVECTOR3(aabb.maximum[0], aabb.minimum[1], aabb.maximum[2]),
-									D3DXVECTOR3(aabb.maximum[0], aabb.maximum[1], aabb.minimum[2]),
-									D3DXVECTOR3(aabb.maximum[0], aabb.maximum[1], aabb.maximum[2]), };
+	TVector pointsAABB[8] = {	TVector(aabb.minimum[0], aabb.minimum[1], aabb.minimum[2]),
+									TVector(aabb.minimum[0], aabb.minimum[1], aabb.maximum[2]),
+									TVector(aabb.minimum[0], aabb.maximum[1], aabb.minimum[2]),
+									TVector(aabb.minimum[0], aabb.maximum[1], aabb.maximum[2]),
+									TVector(aabb.maximum[0], aabb.minimum[1], aabb.minimum[2]),
+									TVector(aabb.maximum[0], aabb.minimum[1], aabb.maximum[2]),
+									TVector(aabb.maximum[0], aabb.maximum[1], aabb.minimum[2]),
+									TVector(aabb.maximum[0], aabb.maximum[1], aabb.maximum[2]), };
 	
-	D3DXVECTOR3 pointsTriangle[3] = { pos0, pos1, pos2 };
+	TVector pointsTriangle[3] = { pos0, pos1, pos2 };
 
 	// try triangle's normal plain.
-	D3DXVECTOR3 edge1 = pos1 - pos0;
-    D3DXVECTOR3 edge2 = pos2 - pos0;
+	TVector edge1 = pos1 - pos0;
+    TVector edge2 = pos2 - pos0;
 
-	D3DXVECTOR3 normal;
-	D3DXVec3Cross(&normal, &edge1, &edge2);
+	TVector normal;
+	TCross(&normal, &edge1, &edge2);
 
 	float minAABB = FLT_MAX;
 	float maxAABB = -FLT_MAX;
 
 	for(int k=0; k<8; ++k)
 	{
-		float pos0 = D3DXVec3Dot(&normal, &pointsAABB[k]);
+		float pos0 = TDot(&normal, &pointsAABB[k]);
 		minAABB = min(minAABB, pos0);
 		maxAABB = max(maxAABB, pos0);
 	}
 
-	float pTriangle = D3DXVec3Dot(&normal, &pointsTriangle[0]);
+	float pTriangle = TDot(&normal, &pointsTriangle[0]);
 
 	if(pTriangle < minAABB || maxAABB < pTriangle) 
 	{
@@ -420,22 +420,22 @@ bool TTriangle::IntersectTest(const TAABB& aabb) const
 	}
 
 	// try all edge pairs.
-	D3DXVECTOR3 axis[3] = { D3DXVECTOR3(1,0,0), D3DXVECTOR3(0,1,0), D3DXVECTOR3(0,0,1) };
-	D3DXVECTOR3 edge[3] = { edge1, edge2, pos1 - pos2 };
+	TVector axis[3] = { TVector(1,0,0), TVector(0,1,0), TVector(0,0,1) };
+	TVector edge[3] = { edge1, edge2, pos1 - pos2 };
 
 	for(int i=0; i<3; ++i)
 	{
 		for(int j=0; j<3; ++j)
 		{
-			D3DXVECTOR3 cross;
-			D3DXVec3Cross(&cross, &axis[i], &edge[j]);
+			TVector cross;
+			TCross(&cross, &axis[i], &edge[j]);
 
 			float minAABB = FLT_MAX;
 			float maxAABB = -FLT_MAX;
 
 			for(int k=0; k<8; ++k)
 			{
-				float pos0 = D3DXVec3Dot(&cross, &pointsAABB[k]);
+				float pos0 = TDot(&cross, &pointsAABB[k]);
 				minAABB = min(minAABB, pos0);
 				maxAABB = max(maxAABB, pos0);
 			}
@@ -445,7 +445,7 @@ bool TTriangle::IntersectTest(const TAABB& aabb) const
 
 			for(int k=0; k<3; ++k)
 			{
-				float pos0 = D3DXVec3Dot(&cross, &pointsTriangle[k]);
+				float pos0 = TDot(&cross, &pointsTriangle[k]);
 				minTriangle = min(minTriangle, pos0);
 				maxTriangle = max(maxTriangle, pos0);
 			}
@@ -462,7 +462,7 @@ bool TTriangle::IntersectTest(const TAABB& aabb) const
 }
 
 /*---------------------------------------------------------------------------*/ 
-bool TTriangle::THit::HitTest(const D3DXVECTOR3& orig, const D3DXVECTOR3& dir, HitResult* result) const
+bool TTriangle::THit::HitTest(const TVector& orig, const TVector& dir, HitResult* result) const
 {
 	int u, v, w;
 	w = ci;
@@ -500,7 +500,7 @@ bool TTriangle::THit::HitTest(const D3DXVECTOR3& orig, const D3DXVECTOR3& dir, H
 }
 
 /*---------------------------------------------------------------------------*/ 
-bool TTriangle::THit::OcclusionTest(const D3DXVECTOR3& orig, const D3DXVECTOR3& dir) const
+bool TTriangle::THit::OcclusionTest(const TVector& orig, const TVector& dir) const
 {
 	HitResult result;
 
@@ -508,11 +508,11 @@ bool TTriangle::THit::OcclusionTest(const D3DXVECTOR3& orig, const D3DXVECTOR3& 
 }
 
 /*---------------------------------------------------------------------------*/ 
-bool TTriangle::NearestTest(const D3DXVECTOR3& orig, float radius, HitResult* result) const
+bool TTriangle::NearestTest(const TVector& orig, float radius, HitResult* result) const
 {
-	D3DXVECTOR3 p0 = pos0;
-	D3DXVECTOR3 p1 = pos1;
-	D3DXVECTOR3 p2 = pos2;
+	TVector p0 = pos0;
+	TVector p1 = pos1;
+	TVector p2 = pos2;
 
 	float u0, u1, u2;
 	float d0 = ::CalcDistance(p0, p1, orig, &u0);
@@ -588,7 +588,7 @@ bool TTriangle::NearestTest(const D3DXVECTOR3& orig, float radius, HitResult* re
 }
 
 /*---------------------------------------------------------------------------*/ 
-__m128	TTriangle::THit::HitTest4(__m128 mask, const TPoint4& orig, const D3DXVECTOR3& d, HitResult4* result) const
+__m128	TTriangle::THit::HitTest4(__m128 mask, const TPoint4& orig, const TVector& d, HitResult4* result) const
 {
 	int u, v, w;
 	w = ci;
@@ -635,7 +635,7 @@ __m128	TTriangle::THit::HitTest4(__m128 mask, const TPoint4& orig, const D3DXVEC
 }
 
 /*---------------------------------------------------------------------------*/ 
-__m128 TTriangle::THit::OcclusionTest4(__m128 mask, const TPoint4& orig, const D3DXVECTOR3& dir) const
+__m128 TTriangle::THit::OcclusionTest4(__m128 mask, const TPoint4& orig, const TVector& dir) const
 {
 	HitResult4 result;
 	return HitTest4(mask, orig, dir, &result);
@@ -676,7 +676,7 @@ __m128 TTriangle::NearestTest4(__m128 mask, const TPoint4& orig, __m128 radius, 
 }
 
 /*---------------------------------------------------------------------------*/ 
-__m256 TTriangle::THit::HitTest8(__m256 mask, const TPoint8& orig, const D3DXVECTOR3& d, HitResult8* result) const
+__m256 TTriangle::THit::HitTest8(__m256 mask, const TPoint8& orig, const TVector& d, HitResult8* result) const
 {
 	int u, v, w;
 	w = ci;
@@ -724,7 +724,7 @@ __m256 TTriangle::THit::HitTest8(__m256 mask, const TPoint8& orig, const D3DXVEC
 }
 
 /*---------------------------------------------------------------------------*/ 
-__m256 TTriangle::THit::OcclusionTest8(const __m256& mask, const TPoint8& orig, const D3DXVECTOR3& dir) const
+__m256 TTriangle::THit::OcclusionTest8(const __m256& mask, const TPoint8& orig, const TVector& dir) const
 {
 	HitResult8 result;
 	return HitTest8(mask, orig, dir, &result);

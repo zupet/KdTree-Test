@@ -145,7 +145,7 @@ TObject& TKdTree<TObject>::GetObject(uint offset)
 template<class TObject>
 void TKdTree<TObject>::BuildTree(UINT depth)
 {
-	uint size = m_objectList.size();
+	uint size = (uint)m_objectList.size();
 	
 	m_hitList.reserve(size);
 
@@ -212,7 +212,7 @@ void TKdTree<TObject>::BuildTree(UINT depth)
 
 /*---------------------------------------------------------------------------*/ 
 template<class TObject>
-bool TKdTree<TObject>::HitTest(const D3DXVECTOR3& orig, const D3DXVECTOR3& dir, HitResult* hitResult) const
+bool TKdTree<TObject>::HitTest(const TVector& orig, const TVector& dir, HitResult* hitResult) const
 {
 	++g_calls;
 
@@ -345,7 +345,7 @@ loop:
 
 /*---------------------------------------------------------------------------*/ 
 template<class TObject>
-bool TKdTree<TObject>::OcclusionTest(const D3DXVECTOR3& orig, const D3DXVECTOR3& dir) const
+bool TKdTree<TObject>::OcclusionTest(const TVector& orig, const TVector& dir) const
 {
 	if(m_leafList.empty())
 	{
@@ -470,7 +470,7 @@ bool TKdTree<TObject>::OcclusionTest(const D3DXVECTOR3& orig, const D3DXVECTOR3&
 
 /*---------------------------------------------------------------------------*/ 
 template<class TObject>
-bool TKdTree<TObject>::NearestTest(const D3DXVECTOR3& orig, float radius, HitResult* hitResult) const
+bool TKdTree<TObject>::NearestTest(const TVector& orig, float radius, HitResult* hitResult) const
 {
 	if(!m_leafList.empty())
 	{
@@ -559,7 +559,7 @@ bool TKdTree<TObject>::NearestTest(const D3DXVECTOR3& orig, float radius, HitRes
 
 /*---------------------------------------------------------------------------*/ 
 template<class TObject>
-__m128 TKdTree<TObject>::HitTest4(__m128 mask, const TPoint4& orig, const D3DXVECTOR3& dir, HitResult4* hitResult) const
+__m128 TKdTree<TObject>::HitTest4(__m128 mask, const TPoint4& orig, const TVector& dir, HitResult4* hitResult) const
 {
 	++g_calls;
 
@@ -710,7 +710,7 @@ loop:
 
 /*---------------------------------------------------------------------------*/ 
 template<class TObject>
-__m128 TKdTree<TObject>::OcclusionTest4(__m128 mask, const TPoint4& orig, const D3DXVECTOR3& dir) const
+__m128 TKdTree<TObject>::OcclusionTest4(__m128 mask, const TPoint4& orig, const TVector& dir) const
 {
 	__m128 ret = _mm_setzero_ps();
 	__m128 rayMask = mask;
@@ -951,7 +951,7 @@ __m128 TKdTree<TObject>::NearestTest4(__m128 mask, const TPoint4& orig, float ra
 
 /*---------------------------------------------------------------------------*/ 
 template<class TObject>
-__m256 TKdTree<TObject>::HitTest8(const __m256& m, const TPoint8& orig, const D3DXVECTOR3& dir, HitResult8* hitResult) const
+__m256 TKdTree<TObject>::HitTest8(const __m256& m, const TPoint8& orig, const TVector& dir, HitResult8* hitResult) const
 {
 	++g_calls;
 
@@ -1126,7 +1126,7 @@ void TKdTree<TObject>::BuildTree(uint tree, const kd_event_list& xList, const kd
 
 	if(minAxis != TKdSplit::SPLIT_END)
 	{
-		uint children = m_splitList.size();
+		uint children = (uint)m_splitList.size();
 
 		m_splitList[tree].SetAxis(minAxis);
 		m_splitList[tree].SetChildren(children);
@@ -1224,10 +1224,10 @@ void TKdTree<TObject>::BuildTree(uint tree, const kd_event_list& xList, const kd
 		std::sort(objectList.begin(), objectList.end());
 		offset_list_iter end = std::unique(objectList.begin(), objectList.end());
 
-		uint count = end - objectList.begin();
+		uint count = (uint)(end - objectList.begin());
 
 		m_splitList[tree].SetAxis(TKdSplit::SPLIT_END);
-		m_splitList[tree].SetChildren(m_leafList.size());
+		m_splitList[tree].SetChildren((uint)m_leafList.size());
 		m_splitList[tree].SetCount(count);
 
 		m_leafList.insert(m_leafList.end(), objectList.begin(), end);

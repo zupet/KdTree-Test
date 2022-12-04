@@ -44,6 +44,9 @@
     <ClInclude Include="t_sse.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="t_vector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="KdTree Test.ico">

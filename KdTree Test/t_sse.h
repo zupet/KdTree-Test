@@ -4,6 +4,8 @@
 #if !defined(_T_SSE_H_)
 #define _T_SSE_H_
 
+#include "t_vector.h"
+
 /*----------------------------------------------------------------------------*/ 
 __forceinline	__m128	operator+(__m128 l, __m128 r)	{ return _mm_add_ps(l,r);		}
 __forceinline	__m128	operator-(__m128 l, __m128 r)	{ return _mm_sub_ps(l,r);		}
@@ -27,10 +29,10 @@ __forceinline	__m128	_mm_merge_ps(__m128 m, __m128 l, __m128 r)
 struct TPoint4
 {
 	TPoint4() {}
-	TPoint4(const D3DXVECTOR3& a) :x(_mm_set1_ps(a.x)), y(_mm_set1_ps(a.y)), z(_mm_set1_ps(a.z)) {}
+	TPoint4(const TVector& a) :x(_mm_set1_ps(a.x)), y(_mm_set1_ps(a.y)), z(_mm_set1_ps(a.z)) {}
 	TPoint4(__m128 a, __m128 b, __m128 c) :x(a), y(b), z(c) {}
 	TPoint4(const __m128* a) :x(a[0]), y(a[1]), z(a[2]) {}
-	TPoint4(const D3DXVECTOR3& a, const D3DXVECTOR3& b, const D3DXVECTOR3& c, const D3DXVECTOR3& d) :x(_mm_set_ps(a.x,b.x,c.x,d.x)), y(_mm_set_ps(a.y,b.y,c.y,d.y)), z(_mm_set_ps(a.z,b.z,c.z,d.z)) {}
+	TPoint4(const TVector& a, const TVector& b, const TVector& c, const TVector& d) :x(_mm_set_ps(a.x,b.x,c.x,d.x)), y(_mm_set_ps(a.y,b.y,c.y,d.y)), z(_mm_set_ps(a.z,b.z,c.z,d.z)) {}
 
 	operator __m128* ()				{ return &x; }
     operator const __m128* () const	{ return &x; }
@@ -126,10 +128,10 @@ __forceinline	__m256	_mm256_merge_ps(__m256 m, __m256 l, __m256 r)
 struct TPoint8
 {
 	TPoint8() {}
-	TPoint8(const D3DXVECTOR3& p) :x(_mm256_broadcast_ss(&p.x)), y(_mm256_broadcast_ss(&p.y)), z(_mm256_broadcast_ss(&p.z)) {}
+	TPoint8(const TVector& p) :x(_mm256_broadcast_ss(&p.x)), y(_mm256_broadcast_ss(&p.y)), z(_mm256_broadcast_ss(&p.z)) {}
 	TPoint8(const __m256& a, const __m256& b, const __m256& c) :x(a), y(b), z(c) {}
 	TPoint8(const __m256* a) :x(a[0]), y(a[1]), z(a[2]) {}
-	TPoint8(const D3DXVECTOR3& a, const D3DXVECTOR3& b, const D3DXVECTOR3& c, const D3DXVECTOR3& d, const D3DXVECTOR3& e, const D3DXVECTOR3& f, const D3DXVECTOR3& g, const D3DXVECTOR3& h)
+	TPoint8(const TVector& a, const TVector& b, const TVector& c, const TVector& d, const TVector& e, const TVector& f, const TVector& g, const TVector& h)
 	:x(_mm256_set_ps(a.x,b.x,c.x,d.x,e.x,f.x,g.x,h.x))
 	,y(_mm256_set_ps(a.y,b.y,c.y,d.y,e.y,f.y,g.y,h.y))
 	,z(_mm256_set_ps(a.z,b.z,c.z,d.z,e.z,f.z,g.z,h.z))

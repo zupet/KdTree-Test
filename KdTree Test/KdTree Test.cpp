@@ -9,7 +9,7 @@
 //#define SINGLE_TRACE
 #define QUAD_TRACE
 
-//#define DIFFUSE_LIGHTING
+#define DIFFUSE_LIGHTING
 //#define DEPTH_LIGHTING
 //#define PROFILE
 
@@ -30,7 +30,7 @@ void SetBitmapSize(int width, int height);
 void PickTriangle(HWND hWnd, int x, int y);
 
 /*---------------------------------------------------------------------------*/ 
-typedef	std::vector<D3DXVECTOR3>	vector_list;
+typedef	std::vector<TVector>	vector_list;
 typedef	vector_list::iterator		vector_list_iter;
 
 typedef	std::vector<TTriangle>		triangle_list;
@@ -40,9 +40,9 @@ vector_list					g_raylList;
 
 struct TriangleNormal
 {
-	D3DXVECTOR3 n0;
-	D3DXVECTOR3 n1;
-	D3DXVECTOR3 n2;
+	TVector n0;
+	TVector n1;
+	TVector n2;
 };
 
 typedef std::vector<TriangleNormal>	normal_list;
@@ -120,16 +120,16 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int nCmdShow)
 	// 테스트 정밀도를 위해 설정
 	DWORD_PTR processMask, systemMask;
 	GetProcessAffinityMask(GetCurrentProcess(), &processMask, &systemMask);
-	SetProcessAffinityMask(GetCurrentProcess(), 1 << (GetMSB(processMask) - 1) );
+	SetProcessAffinityMask(GetCurrentProcess(), 1i64 << (GetMSB(processMask) - 1) );
 
 	SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
 
-	unsigned int currentControl;
-	_controlfp_s(&currentControl, _PC_24, _MCW_PC);
+	//unsigned int currentControl;
+	//_controlfp_s(&currentControl, _PC_24, _MCW_PC);
 
 	// vTune 권고사항. SSE 에서 Flush-To-Zero 와 Denormals-To-Zero Flag 를 켜준다.
-	_mm_setcsr(_mm_getcsr() | _MM_FLUSH_ZERO_ON);
-	_mm_setcsr(_mm_getcsr() | _MM_DENORMALS_ZERO_ON);
+	//_mm_setcsr(_mm_getcsr() | _MM_FLUSH_ZERO_ON);
+	//_mm_setcsr(_mm_getcsr() | _MM_DENORMALS_ZERO_ON);
 
 	__int64 freq, start, end;
 	QueryPerformanceFrequency((LARGE_INTEGER*)&freq);
@@ -155,8 +155,8 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int nCmdShow)
 #if defined(SINGLE_TRACE)
 	/* Single 1 Ray Tracing */ 
 
-	D3DXVECTOR3 light;
-	D3DXVec3Normalize(&light, &D3DXVECTOR3(1,1,1));
+	TVector light;
+	TNormalize(&light, &TVector(1,1,1));
 
 	BYTE* line = &g_bitmap[0];
 
@@ -165,17 +165,17 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int nCmdShow)
 		for(int x=0; x<g_width; ++x)
 		{
 			TKdTree<TTriangle>::HitResult result;
-			D3DXVECTOR3 orig((float)x, (float)y, -500.0f);
-			D3DXVECTOR3 dir(0,0,1);
+			TVector orig((float)x, (float)y, -500.0f);
+			TVector dir(0,0,1);
 
 			if(g_kdTree.HitTest(orig, dir, &result))
 			{
 #ifdef DIFFUSE_LIGHTING
-				D3DXVECTOR3 normal =	g_normalList[result.object].n0 * (1-result.result.u-result.result.v) 
+				TVector normal =	g_normalList[result.object].n0 * (1-result.result.u-result.result.v) 
 										+ g_normalList[result.object].n1 * result.result.u 
 										+ g_normalList[result.object].n2 * result.result.v;
 
-				float intensity = min(1.0f, max(0.0f, D3DXVec3Dot(&normal, &light)));
+				float intensity = min(1.0f, max(0.0f, TDot(&normal, &light)));
 
 				line[x] = (BYTE)(intensity * 255.0f);
 #endif
@@ -208,7 +208,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int nCmdShow)
 			__m128 orig[3] = {	_mm_set_ps(x+0.0f,x+1.0f,x+0.0f,x+1.0f),
 								_mm_set_ps(y+0.0f,y+0.0f,y+1.0f,y+1.0f),
 								_mm_set1_ps(-500.0f),  };
-			D3DXVECTOR3 dir(0,0,1);
+			TVector dir(0,0,1);
 
 			TKdTree<TTriangle>::HitResult4 result;
 			__m128 hitMask = g_kdTree.HitTest4(g_mask4, orig, dir, &result);
@@ -266,7 +266,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int nCmdShow)
 			__m256 orig[3] = {	_mm256_set_ps(x+0.0f,x+1.0f,x+2.0f,x+3.0f,x+0.0f,x+1.0f,x+2.0f,x+3.0f),
 								_mm256_set_ps(y+0.0f,y+0.0f,y+0.0f,y+0.0f,y+1.0f,y+1.0f,y+1.0f,y+1.0f),
 								_mm256_set1_ps(-500.0f),  };
-			D3DXVECTOR3 dir(0,0,1);
+			TVector dir(0,0,1);
 
 			TKdTree<TTriangle>::HitResult8 result;
 			__m256 hitMask = g_kdTree.HitTest8(g_mask8, orig, dir, &result);
@@ -409,7 +409,7 @@ void LoadBunny()
 	{
 		int count = 69451;
 
-		std::vector<D3DXVECTOR3>	vertexList;
+		std::vector<TVector>	vertexList;
 		g_triangleList.reserve(count);
 		g_normalList.reserve(count);
 
@@ -419,12 +419,12 @@ void LoadBunny()
 		{
 			float x, y, z, confidence, intensity;
 			fscanf_s(file, "%f %f %f %f %f", &x, &y, &z, &confidence, &intensity);
-			vertexList.push_back(D3DXVECTOR3(220 + x * 2200, 220 * 2 - y * 2200, z * 2200) * 2);
+			vertexList.push_back(TVector(220 + x * 2200, 220 * 2 - y * 2200, z * 2200) * 2);
 		}
 
-		std::vector<D3DXVECTOR3>	normalList;
+		std::vector<TVector>	normalList;
 
-		normalList.resize(35947, D3DXVECTOR3(0,0,0));
+		normalList.resize(35947, TVector(0,0,0));
 
 		struct Face
 		{
@@ -447,8 +447,8 @@ void LoadBunny()
 			face.p2 = p2;
 			faceList.push_back(face);
 
-			D3DXVECTOR3 normal;
-			D3DXVec3Normalize(&normal, D3DXVec3Cross(&normal, &(vertexList[p0]-vertexList[p1]), &(vertexList[p0]-vertexList[p2])));
+			TVector normal;
+			TNormalize(&normal, TCross(&normal, &(vertexList[p0]-vertexList[p1]), &(vertexList[p0]-vertexList[p2])));
 
 			normalList[p0] += normal;
 			normalList[p1] += normal;
@@ -457,7 +457,7 @@ void LoadBunny()
 
 		for (int i=0; i<35947; ++i)
 		{
-			D3DXVec3Normalize(&normalList[i], &normalList[i]);
+			TNormalize(&normalList[i], &normalList[i]);
 		}
 
 		for (int i=0; i<count; ++i)
@@ -513,8 +513,8 @@ void PickTriangle(HWND hWnd, int x, int y)
 	HPEN hRedPen = CreatePen(PS_SOLID, 0, RGB(255,0,0));
 	HPEN hPenOld = (HPEN)SelectObject(hdc, (HGDIOBJ)hRedPen);
 
-	D3DXVECTOR3 orig((float)x, (float)y, -500.0f);
-	D3DXVECTOR3 dir(0,0,1);
+	TVector orig((float)x, (float)y, -500.0f);
+	TVector dir(0,0,1);
 
 	TKdTree<TTriangle>::HitResult result;
 	if(g_kdTree.HitTest(orig, dir, &result))
@@ -522,9 +522,9 @@ void PickTriangle(HWND hWnd, int x, int y)
 
 		TTriangle triangle = g_kdTree.GetObject(result.object);
 		
-		D3DXVECTOR3 p0 = triangle.pos0;
-		D3DXVECTOR3 p1 = triangle.pos1;
-		D3DXVECTOR3 p2 = triangle.pos2;
+		TVector p0 = triangle.pos0;
+		TVector p1 = triangle.pos1;
+		TVector p2 = triangle.pos2;
 
 		MoveToEx(hdc, (int)p0.x, (int)p0.y, NULL);
 		LineTo(hdc, (int)p1.x, (int)p1.y);
