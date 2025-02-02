@@ -161,3 +161,6 @@ pip-log.txt
 
 # Mac crap
 .DS_Store
+/KdTree Test/bunny.kdt
+/KdTree Test/KdTree Test.sln
+/.vs/KdTree Test
