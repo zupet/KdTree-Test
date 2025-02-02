@@ -15,27 +15,6 @@ struct TNearestInfo
 	uint	offset;
 };
 
-struct TTraversalInfo4
-{
-	__m128		mask;
-	__m128		t_min, t_max;
-	TKdSplit	split;
-};
-
-struct TNearestInfo4
-{
-	__m128	mask;
-	__m128	distance;
-	uint	offset;
-};
-
-struct TTraversalInfo8
-{
-	__m256		mask;
-	__m256		t_min, t_max;
-	TKdSplit	split;
-};
-
 /*---------------------------------------------------------------------------*/ 
 /*                                                                           */ 
 /*---------------------------------------------------------------------------*/ 
@@ -75,10 +54,6 @@ void TKdTree<TObject>::SaveKdTree(LPCTSTR filename)
 			fwrite(&size, sizeof(size), 1, file);
 			fwrite(&m_objectList[0], sizeof(m_objectList[0]), size, file);
 
-			size = (UINT)m_hitList.size();
-			fwrite(&size, sizeof(size), 1, file);
-			fwrite(&m_hitList[0], sizeof(m_hitList[0]), size, file);
-
 			size = (UINT)m_splitList.size();
 			fwrite(&size, sizeof(size), 1, file);
 			fwrite(&m_splitList[0], sizeof(m_splitList[0]), size, file);
@@ -107,10 +82,6 @@ bool TKdTree<TObject>::LoadKdTree(LPCTSTR filename)
 		fread(&size, sizeof(size), 1, file);
 		m_objectList.resize(size);
 		fread(&m_objectList[0], sizeof(m_objectList[0]), size, file);
-
-		fread(&size, sizeof(size), 1, file);
-		m_hitList.resize(size);
-		fread(&m_hitList[0], sizeof(m_hitList[0]), size, file);
 
 		fread(&size, sizeof(size), 1, file);
 		m_splitList.resize(size);
@@ -147,8 +118,6 @@ void TKdTree<TObject>::BuildTree(UINT depth)
 {
 	uint size = (uint)m_objectList.size();
 	
-	m_hitList.reserve(size);
-
 	kd_event_list	xList;
 	kd_event_list	yList;
 	kd_event_list	zList;
@@ -164,7 +133,6 @@ void TKdTree<TObject>::BuildTree(UINT depth)
 		const TAABB& triangle = m_objectList[i].GetAABB();
 
 		aabbList.push_back(triangle);
-		m_hitList.push_back(m_objectList[i]);
 
 		if(triangle.minimum[0] != triangle.maximum[0])
 		{
@@ -208,893 +176,6 @@ void TKdTree<TObject>::BuildTree(UINT depth)
 	m_maxLeafCount = 0;
 
 	BuildTree(0, xList, yList, zList, m_aabb, aabbList, depth);
-}
-
-/*---------------------------------------------------------------------------*/ 
-template<class TObject>
-bool TKdTree<TObject>::HitTest(const TVector& orig, const TVector& dir, HitResult* hitResult) const
-{
-	++g_calls;
-
-	float o[3] = { orig.x, orig.y, orig.z };
-
-	float inv[3];
-	int order[3][2];
-
-	float t_max = FLT_MAX;
-	float t_min = 0;
-
-	for(int axis=0; axis<3; ++axis)
-	{
-		float temp = dir[axis] ? 1/dir[axis] : (dir[axis] < 0 ? -FLT_MAX : FLT_MAX);
-		inv[axis] = temp;
-
-		order[axis][0] = 0 < temp ? 0 : 1;
-		order[axis][1] = 0 < temp ? 1 : 0;
-
-		float left	= (m_aabb.minimum[axis] - o[axis]) * inv[axis];
-		float right	= (m_aabb.maximum[axis] - o[axis]) * inv[axis];
-
-		t_max = min(t_max, max(left, right));
-	}
-
-	if(0 <= t_max)
-	{
-		const TKdSplit*	splitList	= &m_splitList[0];
-		const uint*		leafList	= &m_leafList[0];
-		const THit*		hitList		= &m_hitList[0];
-		const TObject*	objectList	= &m_objectList[0];
-
-		uint traversal = 0;
-		TTraversalInfo traversalStack[100];
-
-		uint mailbox = 0;
-		uint mailboxStack[8] = { 
-				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
-				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
-		};
-
-		TKdSplit kdSplit = splitList[0];
-
-		while(true)
-		{
-loop:
-			TKdSplit::SPLIT_AXIS axis = kdSplit.GetAxis();
-			if(axis != TKdSplit::SPLIT_END)
-			{
-				++g_nodes;
-
-				float t_at_split = (kdSplit.m_split - o[axis]) * inv[axis];
-				if(t_max <= t_at_split)
-				{
-					++g_left;
-					kdSplit = splitList[kdSplit.GetChildren() + order[axis][0]];
-				}
-				else if(t_at_split <= t_min)
-				{
-					++g_right;
-					kdSplit = splitList[kdSplit.GetChildren() + order[axis][1]];
-				}
-				else
-				{
-					++g_push;
-					traversalStack[traversal].t_max = t_max;
-					traversalStack[traversal].t_min = t_at_split;
-					traversalStack[traversal].split = splitList[kdSplit.GetChildren() + order[axis][1]];
-					++traversal;
-
-					t_max = t_at_split;
-					kdSplit = splitList[kdSplit.GetChildren() + order[axis][0]];
-				}
-			}
-			else
-			{
-				if(t_min < hitResult->GetDist())
-				{
-					const uint* candidate = leafList + kdSplit.GetChildren();
-
-					for(UINT i=0; i<kdSplit.m_count; ++i)
-					{
-						int index = candidate[i];
-
-						if(	mailboxStack[0] == index || mailboxStack[1] == index
-							|| mailboxStack[2] == index || mailboxStack[3] == index
-							|| mailboxStack[4] == index || mailboxStack[5] == index
-							|| mailboxStack[6] == index || mailboxStack[7] == index
-							)
-						{
-							continue;
-						}
-						else
-						{
-							mailboxStack[mailbox++ & (8-1)] = index;
-						}
-
-						++g_objects;
-
-						TObject::HitResult testResult;
-						if(hitList[index].HitTest(orig, dir, &testResult) && (testResult.GetDist() < hitResult->GetDist()))
-						{
-							hitResult->object	= index;
-							hitResult->result	= testResult;
-						}
-					}
-				}
-				while(traversal)
-				{
-					--traversal;
-					t_min = traversalStack[traversal].t_min;
-
-					if(t_min < hitResult->GetDist())
-					{
-						t_max = traversalStack[traversal].t_max;
-						kdSplit = traversalStack[traversal].split;
-
-						goto loop;
-					}
-				}
-
-				break;
-			}
-		}
-		
-		return hitResult->GetDist() != FLT_MAX;
-	}
-	return false;
-}
-
-/*---------------------------------------------------------------------------*/ 
-template<class TObject>
-bool TKdTree<TObject>::OcclusionTest(const TVector& orig, const TVector& dir) const
-{
-	if(m_leafList.empty())
-	{
-		return false;
-	}
-
-	float o[3] = { orig.x, orig.y, orig.z };
-	float inv[3];
-
-	inv[0] = dir.x ? 1/dir.x : (dir.x < 0 ? -FLT_MAX : FLT_MAX);
-	inv[1] = dir.y ? 1/dir.y : (dir.y < 0 ? -FLT_MAX : FLT_MAX);
-	inv[2] = dir.z ? 1/dir.z : (dir.z < 0 ? -FLT_MAX : FLT_MAX);
-
-	float x_max = dir.x ? max((m_aabb.minimum[0] - o[0]) * inv[0], (m_aabb.maximum[0] - o[0]) * inv[0]) : FLT_MAX;
-	float y_max = dir.y ? max((m_aabb.minimum[1] - o[1]) * inv[1], (m_aabb.maximum[1] - o[1]) * inv[1]) : FLT_MAX;
-	float z_max = dir.z ? max((m_aabb.minimum[2] - o[2]) * inv[2], (m_aabb.maximum[2] - o[2]) * inv[2]) : FLT_MAX;
-
-	float t_max = min(x_max, min(y_max, z_max));
-	float t_min = 0;
-
-	if(0 <= t_max)
-	{
-		const TKdSplit*	splitList	= &m_splitList[0];
-		const uint*		leafList	= &m_leafList[0];
-		const THit*		hitList		= &m_hitList[0];
-		const TObject*	objectList	= &m_objectList[0];
-
-		uint offset = 0;
-		uint traversal = 0;
-		TTraversalInfo traversalStack[100];
-
-		int order[3][2];
-
-		uint mailbox = 0;
-		uint mailboxStack[8] = { 
-				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
-				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
-		};
-
-		for(int axis=0; axis<3; ++axis)
-		{
-			if(0 < inv[axis])
-			{
-				order[axis][0] = 0;
-				order[axis][1] = 1;
-			}
-			else
-			{
-				order[axis][0] = 1;
-				order[axis][1] = 0;
-			}
-		}
-
-		while(true)
-		{
-			TKdSplit::SPLIT_AXIS axis = splitList[offset].GetAxis();
-			UINT children = splitList[offset].GetChildren();
-			if(axis != TKdSplit::SPLIT_END)
-			{
-				float t_at_split = (splitList[offset].m_split - o[axis]) * inv[axis];
-				if(t_max <= t_at_split)
-				{
-					offset = children + order[axis][0];
-				}
-				else if(t_at_split <= t_min)
-				{
-					offset = children + order[axis][1];
-				}
-				else
-				{
-					traversalStack[traversal].t_max = t_max;
-					traversalStack[traversal].t_min = t_at_split;
-					traversalStack[traversal].offset = children + order[axis][1];
-					++traversal;
-
-					t_max = t_at_split;
-					offset = children + order[axis][0];
-				}
-			}
-			else
-			{
-				const uint* candidate = leafList + children;
-
-				for(UINT i=0; i<splitList[offset].m_count; ++i)
-				{
-					int index = candidate[i];
-
-					if(	mailboxStack[0] == index || mailboxStack[1] == index
-						|| mailboxStack[2] == index || mailboxStack[3] == index
-						|| mailboxStack[4] == index || mailboxStack[5] == index
-						|| mailboxStack[6] == index || mailboxStack[7] == index
-						)
-					{
-						continue;
-					}
-					else
-					{
-						mailboxStack[mailbox++ & (8-1)] = index;
-					}
-
-					if(hitList[index].OcclusionTest(orig, dir) == true)
-					{
-						return true;
-					}
-				}
-				if(traversal)
-				{
-					--traversal;
-					t_max = traversalStack[traversal].t_max;
-					t_min = traversalStack[traversal].t_min;
-					offset = traversalStack[traversal].offset;
-				}
-				else
-				{
-					break;
-				}
-			}	
-		}
-	}
-	return false;
-}
-
-/*---------------------------------------------------------------------------*/ 
-template<class TObject>
-bool TKdTree<TObject>::NearestTest(const TVector& orig, float radius, HitResult* hitResult) const
-{
-	if(!m_leafList.empty())
-	{
-		const TKdSplit*	splitList	= &m_splitList[0];
-		const uint*		leafList	= &m_leafList[0];
-		const THit*		hitList		= &m_hitList[0];
-		const TObject*	objectList	= &m_objectList[0];
-
-		uint offset = 0;
-		float distance = 0;
-
-		uint traversal = 0;
-		TNearestInfo nearestStack[100];
-
-		while(true)
-		{
-			TKdSplit::SPLIT_AXIS axis	= splitList[offset].GetAxis();
-			UINT children = splitList[offset].GetChildren();
-			if(axis != TKdSplit::SPLIT_END)
-			{
-				if(distance < radius)
-				{
-					float split = splitList[offset].m_split;
-
-					if(orig[axis]+radius < split)
-					{
-						offset		= children+0;
-						distance	= orig[axis] - split;
-					}
-					else if(split < orig[axis]-radius)
-					{
-						offset		= children+1;
-						distance	= split - orig[axis];
-					}
-					else
-					{
-						nearestStack[traversal].offset = children+1;
-						nearestStack[traversal].distance = split - orig[axis];
-						++traversal;
-
-						offset		= children+0;
-						distance	= orig[axis] - split;
-					}
-				}
-				else if(traversal)
-				{
-					--traversal;
-					offset		= nearestStack[traversal].offset;
-					distance	= nearestStack[traversal].distance;
-				}
-				else
-				{
-					return hitResult->GetDist() != FLT_MAX;
-				}
-			}
-			else
-			{
-				const uint* candidate = leafList + children;
-
-				for(UINT i=0; i<splitList[offset].m_count; ++i)
-				{
-					TObject::HitResult testResult;
-					if(objectList[candidate[i]].NearestTest(orig, radius, &testResult) && testResult.GetDist() < radius)
-					{
-						hitResult->object = candidate[i];
-						hitResult->result = testResult;
-						radius = testResult.GetDist();
-					}
-				}
-				if(traversal)
-				{
-					--traversal;
-					offset		= nearestStack[traversal].offset;
-					distance	= nearestStack[traversal].distance;
-				}
-				else
-				{
-					return hitResult->GetDist() != FLT_MAX;
-				}
-			}	
-		}
-		return hitResult->GetDist() != FLT_MAX;
-	}
-	return false;
-}
-
-/*---------------------------------------------------------------------------*/ 
-template<class TObject>
-__m128 TKdTree<TObject>::HitTest4(__m128 mask, const TPoint4& orig, const TVector& dir, HitResult4* hitResult) const
-{
-	++g_calls;
-
-	__m128 ret = g_zero4;
-	__m128 rayMask = mask;
-
-	__m128 inv[3];
-	int order[3][2];
-
-	__m128 t_max = g_fltMax4;
-	__m128 t_min = _mm_setzero_ps();
-
-	for(int axis=0; axis<3; ++axis)
-	{
-		float temp = dir[axis] ? 1/dir[axis] : (dir[axis] < 0 ? -FLT_MAX : FLT_MAX);
-		inv[axis] = _mm_set1_ps(temp);
-
-		order[axis][0] = 0 < temp ? 0 : 1;
-		order[axis][1] = 0 < temp ? 1 : 0;
-
-		__m128 left		= (_mm_set1_ps(m_aabb.minimum[axis]) - orig[axis]) * inv[axis];
-		__m128 right	= (_mm_set1_ps(m_aabb.maximum[axis]) - orig[axis]) * inv[axis];
-
-		t_max = _mm_min_ps(t_max, _mm_max_ps(left, right));
-	}
-
-	mask = mask & (_mm_setzero_ps() <= t_max);
-	int mask_mask = _mm_movemask_ps(mask);
-
-	if(mask_mask)
-	{
-		const TKdSplit*	splitList	= &m_splitList[0];
-		const uint*		leafList	= &m_leafList[0];
-		const THit*		hitList		= &m_hitList[0];
-
-		TTraversalInfo4 traversalStack[100];
-		uint traversal = 0;
-
-		uint mailbox = 0;
-		__declspec(align(16)) uint mailboxStack[8] = { 
-				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
-				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
-		};
-
-		TKdSplit kdSplit = splitList[0];
-
-		while(true)
-		{
-loop:
-			TKdSplit::SPLIT_AXIS axis = kdSplit.GetAxis();
-			if(axis != TKdSplit::SPLIT_END)
-			{
-				++g_nodes;
-
-				const TKdSplit* children = splitList + kdSplit.GetChildren();
-
-				__m128 t_at_split = (_mm_set1_ps(kdSplit.m_split) - orig[axis]) * inv[axis];
-
-				__m128 left, right;
-				
-				if(_mm_movemask_ps(left = mask & (t_max <= t_at_split)) == mask_mask)
-				{
-					++g_left;
-					kdSplit = children[order[axis][0]];
-				}
-				else if(_mm_movemask_ps(right = mask & (t_at_split <= t_min)) == mask_mask)
-				{
-					++g_right;
-					kdSplit = children[order[axis][1]];
-				}
-				else
-				{
-					++g_push;
-					TTraversalInfo4& stack = traversalStack[traversal];
-					stack.t_max = t_max;
-					stack.t_min = t_at_split;
-					stack.split = children[order[axis][1]];
-					stack.mask = right | _mm_andnot_ps(left, mask);
-					++traversal;
-
-					t_max = t_at_split;
-					kdSplit = children[order[axis][0]];
-					mask = left | _mm_andnot_ps(right, mask);
-					mask_mask = _mm_movemask_ps(mask);
-				}
-			}
-			else
-			{
-				mask = mask & (t_min <= hitResult->GetDist());
-				mask_mask = _mm_movemask_ps(mask);
-
-				if(mask_mask)
-				{
-					const uint* candidate = leafList + kdSplit.GetChildren();
-
-					for(UINT i=0; i<kdSplit.m_count; ++i)
-					{
-						int index = candidate[i];
-
-						__m128i temp = _mm_set1_epi32(index);
-						__m128i low = _mm_load_si128((__m128i const*)(mailboxStack + 0));
-						__m128i high = _mm_load_si128((__m128i const*)(mailboxStack + 4));
-
-						if(	_mm_movemask_epi8( _mm_add_epi32(_mm_cmpeq_epi32(temp,low), _mm_cmpeq_epi32(temp,high) ) ) )
-						{
-							continue;
-						}
-
-						mailboxStack[mailbox++ & (8-1)] = index;
-
-						++g_objects;
-
-						TObject::HitResult4 testResult;
-
-						__m128 hitMask = hitList[index].HitTest4(rayMask, orig, dir, &testResult);
-						__m128 testMask = hitMask & (testResult.GetDist() < hitResult->GetDist());
-
-						hitResult->result.MergeResult(testMask, testResult);
-						hitResult->object = _mm_merge_ps(testMask, hitResult->object, _mm_load1_ps((float*)(candidate+i)));
-
-						ret = ret | testMask;
-					}
-				}
-
-				while(traversal)
-				{
-					TTraversalInfo4& stack = traversalStack[--traversal];
-					t_min = stack.t_min;
-					mask = stack.mask & (t_min <= hitResult->GetDist());
-					mask_mask = _mm_movemask_ps(mask);
-
-					if(mask_mask)
-					{
-						kdSplit = stack.split;
-						t_max = stack.t_max;
-
-						goto loop;
-					}
-				}
-
-				break;
-			}	
-		}
-	}
-
-	return ret;
-}
-
-/*---------------------------------------------------------------------------*/ 
-template<class TObject>
-__m128 TKdTree<TObject>::OcclusionTest4(__m128 mask, const TPoint4& orig, const TVector& dir) const
-{
-	__m128 ret = _mm_setzero_ps();
-	__m128 rayMask = mask;
-
-	__m128 inv[3];
-	int order[3][2];
-	__m128 t_max = g_fltMax4;
-	__m128 t_min = g_zero4;
-	for(int axis=0; axis<3; ++axis)
-	{
-		float temp = dir[axis] ? 1/dir[axis] : (dir[axis] < 0 ? -FLT_MAX : FLT_MAX);
-		inv[axis] = _mm_set1_ps(temp);
-
-		order[axis][0] = 0 < temp ? 0 : 1;
-		order[axis][1] = 0 < temp ? 1 : 0;
-
-		__m128 left		= (_mm_set1_ps(m_aabb.minimum[axis]) - orig[axis]) * inv[axis];
-		__m128 right	= (_mm_set1_ps(m_aabb.maximum[axis]) - orig[axis]) * inv[axis];
-
-		t_max = _mm_min_ps(t_max, _mm_max_ps(left, right));
-	}
-
-	mask = mask & (g_zero4 <= t_max);
-	int retMask = _mm_movemask_ps(mask);
-	if(retMask)
-	{
-		const TKdSplit*	splitList	= &m_splitList[0];
-		const uint*		leafList	= &m_leafList[0];
-		const THit*		hitList		= &m_hitList[0];
-		const TObject*	objectList	= &m_objectList[0];
-
-		TTraversalInfo4 traversalStack[100];
-		uint traversal = 0;
-
-		uint mailbox = 0;
-		__declspec(align(16)) uint mailboxStack[8] = { 
-				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
-				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
-		};
-
-		uint offset = 0;
-
-		while(true)
-		{
-			TKdSplit::SPLIT_AXIS axis = splitList[offset].GetAxis();
-			UINT children = splitList[offset].GetChildren();
-			if(axis != TKdSplit::SPLIT_END)
-			{
-				__m128 t_at_split = (_mm_set1_ps(splitList[offset].m_split) - orig[axis]) * inv[axis];
-
-				__m128 left = mask & (t_max <= t_at_split);
-				__m128 right = mask & (t_at_split <= t_min);
-
-				int mask_mask = _mm_movemask_ps(mask);
-				
-				if(_mm_movemask_ps(left) == mask_mask)
-				{
-					offset = children + order[axis][0];
-					mask = _mm_andnot_ps(ret, left);
-				}
-				else if(_mm_movemask_ps(right) == mask_mask)
-				{
-					offset = children + order[axis][1];
-					mask = _mm_andnot_ps(ret, right);
-				}
-				else
-				{
-					traversalStack[traversal].t_max = t_max;
-					traversalStack[traversal].t_min = t_at_split;
-					traversalStack[traversal].offset = children + order[axis][1];
-					traversalStack[traversal].mask = _mm_andnot_ps(ret, right | _mm_andnot_ps(left, mask));
-					++traversal;
-
-					t_max = t_at_split;
-					offset = children + order[axis][0];
-					mask = _mm_andnot_ps(ret, left | _mm_andnot_ps(right, mask));
-				}
-			}
-			else
-			{
-				if(_mm_movemask_ps(mask))
-				{
-					const uint* candidate = leafList + children;
-
-					for(UINT i=0; i<splitList[offset].m_count; ++i)
-					{
-						int index = candidate[i];
-
-						__m128i temp = _mm_set1_epi32(index);
-						__m128i low = _mm_load_si128((__m128i const*)(mailboxStack + 0));
-						__m128i high = _mm_load_si128((__m128i const*)(mailboxStack + 4));
-
-						if(	_mm_movemask_epi8( _mm_add_epi32(_mm_cmpeq_epi32(temp,low), _mm_cmpeq_epi32(temp,high) ) ) )
-						{
-							continue;
-						}
-
-						mailboxStack[mailbox++ & (8-1)] = index;
-
-						__m128 testMask = hitList[index].OcclusionTest4(rayMask, orig, dir);
-
-						ret = ret | testMask;
-
-						if(_mm_movemask_ps(ret) == retMask)
-						{
-							return ret;
-						}
-					}
-				}
-				if(traversal)
-				{
-					--traversal;
-					t_max = traversalStack[traversal].t_max;
-					t_min = traversalStack[traversal].t_min;
-					offset = traversalStack[traversal].offset;
-					mask = traversalStack[traversal].mask;
-				}
-				else
-				{
-					break;
-				}
-			}	
-		}
-	}
-	return ret;
-}
-
-/*---------------------------------------------------------------------------*/ 
-template<class TObject>
-__m128 TKdTree<TObject>::NearestTest4(__m128 mask, const TPoint4& orig, float radius, HitResult4* hitResult) const
-{
-	__m128 ret = g_zero4;
-
-	if(_mm_movemask_ps(mask))
-	{
-		const TKdSplit*	splitList	= &m_splitList[0];
-		const uint*		leafList	= &m_leafList[0];
-		const THit*		hitList		= &m_hitList[0];
-		const TObject*	objectList	= &m_objectList[0];
-
-		uint offset = 0;
-		__m128 distance = _mm_setzero_ps();
-
-		TNearestInfo4 nearestStack[100];
-		uint traversal = 0;
-
-		__m128 r = _mm_set1_ps(radius);
-
-		while(true)
-		{
-			TKdSplit::SPLIT_AXIS axis = splitList[offset].GetAxis();
-			UINT children = splitList[offset].GetChildren();
-			if(axis != TKdSplit::SPLIT_END)
-			{
-				mask = mask & (distance < r);
-				if(_mm_movemask_ps(mask))
-				{
-					__m128 split = _mm_set1_ps(splitList[offset].m_split);
-
-					__m128 left = mask & ((orig[axis] + r) < split);
-					__m128 right = mask & (split < (orig[axis] - r));
-
-					int mask_mask = _mm_movemask_ps(mask);
-					
-					if(_mm_movemask_ps(left) == mask_mask)
-					{
-						offset		= children + 0;
-						distance	= orig[axis] - split;
-						mask		= left;
-					}
-					else if(_mm_movemask_ps(right) == mask_mask)
-					{
-						offset		= children + 1;
-						distance	= split - orig[axis];
-						mask		= right;
-					}
-					else
-					{
-						nearestStack[traversal].offset = children + 1;
-						nearestStack[traversal].mask = right | _mm_andnot_ps(left, mask);
-						nearestStack[traversal].distance = split - orig[axis];
-						++traversal;
-
-						offset		= children + 0;
-						distance	= orig[axis] - split;
-						mask		= left | _mm_andnot_ps(right, mask);
-					}
-				}
-				else if(traversal)
-				{
-					--traversal;
-					offset		= nearestStack[traversal].offset;
-					mask		= nearestStack[traversal].mask;
-					distance	= nearestStack[traversal].distance;
-				}
-				else
-				{
-					break;
-				}
-			}
-			else
-			{
-				if(_mm_movemask_ps(mask))
-				{
-					const uint* candidate = leafList + children;
-
-					for(UINT i=0; i<splitList[offset].m_count; ++i)
-					{
-						TObject::HitResult4 testResult;
-						
-						__m128 nearestMask = objectList[candidate[i]].NearestTest4(mask, orig, r, &testResult);
-						__m128 testMask = nearestMask & (testResult.GetDist() < r);
-
-						hitResult->object = _mm_merge_ps(testMask, hitResult->object, _mm_load1_ps((float*)(candidate+i)));
-						hitResult->result.MergeResult(testMask, testResult);
-						r = _mm_merge_ps(testMask, r, testResult.GetDist());
-
-						ret = ret | testMask;
-					}
-				}
-				if(traversal)
-				{
-					--traversal;
-					offset		= nearestStack[traversal].offset;
-					mask		= nearestStack[traversal].mask;
-					distance	= nearestStack[traversal].distance;
-				}
-				else
-				{
-					break;
-				}
-			}
-		}	
-	}
-
-	return ret;
-}
-
-/*---------------------------------------------------------------------------*/ 
-template<class TObject>
-__m256 TKdTree<TObject>::HitTest8(const __m256& m, const TPoint8& orig, const TVector& dir, HitResult8* hitResult) const
-{
-	++g_calls;
-
-	__m256 ret = g_zero8;
-	__m256 rayMask = m;
-
-	__m256 inv[3];
-	int order[3][2];
-
-	__m256 t_max = g_fltMax8;
-	__m256 t_min = g_zero8;
-
-	for(int axis=0; axis<3; ++axis)
-	{
-		float temp = dir[axis] ? 1/dir[axis] : (dir[axis] < 0 ? -FLT_MAX : FLT_MAX);
-		inv[axis] = _mm256_broadcast_ss(&temp);
-
-		order[axis][0] = 0 < temp ? 0 : 1;
-		order[axis][1] = 0 < temp ? 1 : 0;
-
-		__m256 left		= (_mm256_broadcast_ss(&m_aabb.minimum[axis]) - orig[axis]) * inv[axis];
-		__m256 right	= (_mm256_broadcast_ss(&m_aabb.maximum[axis]) - orig[axis]) * inv[axis];
-
-		t_max = _mm256_min_ps(t_max, _mm256_max_ps(left, right));
-	}
-
-	__m256 mask = m & (g_zero8 <= t_max);
-	int mask_mask = _mm256_movemask_ps(mask);
-
-	if(mask_mask)
-	{
-		const TKdSplit*	splitList	= &m_splitList[0];
-		const uint*		leafList	= &m_leafList[0];
-		const THit*		hitList		= &m_hitList[0];
-
-		TTraversalInfo8 traversalStack[100];
-		uint traversal = 0;
-
-		uint mailbox = 0;
-		__declspec(align(16)) uint mailboxStack[8] = { 
-				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
-				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
-		};
-
-		TKdSplit kdSplit = splitList[0];
-
-		while(true)
-		{
-loop:
-			TKdSplit::SPLIT_AXIS axis = kdSplit.GetAxis();
-			if(axis != TKdSplit::SPLIT_END)
-			{
-				++g_nodes;
-
-				const TKdSplit* children = splitList + kdSplit.GetChildren();
-
-				__m256 t_at_split = (_mm256_broadcast_ss(&kdSplit.m_split) - orig[axis]) * inv[axis];
-
-				__m256 left, right;
-				
-				if(_mm256_movemask_ps(left = mask & (t_max <= t_at_split)) == mask_mask)
-				{
-					kdSplit = children[order[axis][0]];
-				}
-				else if(_mm256_movemask_ps(right = mask & (t_at_split <= t_min)) == mask_mask)
-				{
-					kdSplit = children[order[axis][1]];
-				}
-				else
-				{
-					TTraversalInfo8& stack = traversalStack[traversal];
-					stack.t_max = t_max;
-					stack.t_min = t_at_split;
-					stack.split = children[order[axis][1]];
-					stack.mask = right | _mm256_andnot_ps(left, mask);
-					++traversal;
-
-					t_max = t_at_split;
-					kdSplit = children[order[axis][0]];
-					mask = left | _mm256_andnot_ps(right, mask);
-					mask_mask = _mm256_movemask_ps(mask);
-				}
-			}
-			else
-			{
-				mask = mask & (t_min <= hitResult->GetDist());
-				mask_mask = _mm256_movemask_ps(mask);
-
-				if(mask_mask)
-				{
-					const uint* candidate = leafList + kdSplit.GetChildren();
-
-					for(UINT i=0; i<kdSplit.m_count; ++i)
-					{
-						int index = candidate[i];
-
-						__m128i temp = _mm_set1_epi32(index);
-						__m128i low = _mm_load_si128((__m128i const*)(mailboxStack + 0));
-						__m128i high = _mm_load_si128((__m128i const*)(mailboxStack + 4));
-
-						if(	_mm_movemask_epi8( _mm_add_epi32(_mm_cmpeq_epi32(temp,low), _mm_cmpeq_epi32(temp,high) ) ) )
-						{
-							continue;
-						}
-
-						mailboxStack[mailbox++ & (8-1)] = index;
-
-						++g_objects;
-
-						TObject::HitResult8 testResult;
-
-						__m256 hitMask = hitList[index].HitTest8(rayMask, orig, dir, &testResult);
-						__m256 testMask = hitMask & (testResult.GetDist() < hitResult->GetDist());
-
-						hitResult->result.MergeResult(testMask, testResult);
-						hitResult->object = _mm256_merge_ps(testMask, hitResult->object, _mm256_broadcast_ss((float*)(candidate+i)));
-
-						ret = ret | testMask;
-					}
-				}
-
-				while(traversal)
-				{
-					TTraversalInfo8& stack = traversalStack[--traversal];
-					t_min = stack.t_min;
-					mask = stack.mask & (t_min <= hitResult->GetDist());
-					mask_mask = _mm256_movemask_ps(mask);
-
-					if(mask_mask)
-					{
-						kdSplit = stack.split;
-						t_max = stack.t_max;
-
-						goto loop;
-					}
-				}
-
-				break;
-			}	
-		}
-	}
-
-	return ret;
 }
 
 /*---------------------------------------------------------------------------*/ 
@@ -1234,6 +315,482 @@ void TKdTree<TObject>::BuildTree(uint tree, const kd_event_list& xList, const kd
 
 		m_maxLeafCount = max(m_maxLeafCount, (uint)(end - objectList.begin()));
 	}
+}
+
+/*---------------------------------------------------------------------------*/ 
+template<class TObject>
+bool TKdTree<TObject>::HitTest(const TVector& orig, const TVector& dir, HitResult* hitResult) const
+{
+	++g_calls;
+
+	float o[3] = { orig.x, orig.y, orig.z };
+
+	float inv[3];
+	int order[3][2];
+
+	float t_max = FLT_MAX;
+	float t_min = 0;
+
+	for(int axis=0; axis<3; ++axis)
+	{
+		float temp = dir[axis] ? 1/dir[axis] : (dir[axis] < 0 ? -FLT_MAX : FLT_MAX);
+		inv[axis] = temp;
+
+		order[axis][0] = 0 < temp ? 0 : 1;
+		order[axis][1] = 0 < temp ? 1 : 0;
+
+		float left	= (m_aabb.minimum[axis] - o[axis]) * inv[axis];
+		float right	= (m_aabb.maximum[axis] - o[axis]) * inv[axis];
+
+		t_max = min(t_max, max(left, right));
+	}
+
+	if(0 <= t_max)
+	{
+		const TKdSplit*	splitList	= &m_splitList[0];
+		const uint*		leafList	= &m_leafList[0];
+		const TObject*	objectList	= &m_objectList[0];
+
+		uint traversal = 0;
+		TTraversalInfo traversalStack[100];
+
+		uint mailbox = 0;
+		uint mailboxStack[8] = { 
+				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
+				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
+		};
+
+		TKdSplit kdSplit = splitList[0];
+
+		while(true)
+		{
+loop:
+			TKdSplit::SPLIT_AXIS axis = kdSplit.GetAxis();
+			if(axis != TKdSplit::SPLIT_END)
+			{
+				++g_nodes;
+
+				float t_at_split = (kdSplit.m_split - o[axis]) * inv[axis];
+				if(t_max <= t_at_split)
+				{
+					++g_left;
+					kdSplit = splitList[kdSplit.GetChildren() + order[axis][0]];
+				}
+				else if(t_at_split <= t_min)
+				{
+					++g_right;
+					kdSplit = splitList[kdSplit.GetChildren() + order[axis][1]];
+				}
+				else
+				{
+					++g_push;
+					traversalStack[traversal].t_max = t_max;
+					traversalStack[traversal].t_min = t_at_split;
+					traversalStack[traversal].split = splitList[kdSplit.GetChildren() + order[axis][1]];
+					++traversal;
+
+					t_max = t_at_split;
+					kdSplit = splitList[kdSplit.GetChildren() + order[axis][0]];
+				}
+			}
+			else
+			{
+				if(t_min < hitResult->GetDist())
+				{
+					const uint* candidate = leafList + kdSplit.GetChildren();
+
+					for(UINT i=0; i<kdSplit.m_count; ++i)
+					{
+						int index = candidate[i];
+
+						if(	mailboxStack[0] == index || mailboxStack[1] == index
+							|| mailboxStack[2] == index || mailboxStack[3] == index
+							|| mailboxStack[4] == index || mailboxStack[5] == index
+							|| mailboxStack[6] == index || mailboxStack[7] == index
+							)
+						{
+							continue;
+						}
+						else
+						{
+							mailboxStack[mailbox++ & (8-1)] = index;
+						}
+
+						++g_objects;
+
+						TObject::HitResult testResult;
+						if(objectList[index].HitTest(orig, dir, &testResult) && (testResult.GetDist() < hitResult->GetDist()))
+						{
+							hitResult->object	= index;
+							hitResult->result	= testResult;
+						}
+					}
+				}
+				while(traversal)
+				{
+					--traversal;
+					t_min = traversalStack[traversal].t_min;
+
+					if(t_min < hitResult->GetDist())
+					{
+						t_max = traversalStack[traversal].t_max;
+						kdSplit = traversalStack[traversal].split;
+
+						goto loop;
+					}
+				}
+
+				break;
+			}
+		}
+		
+		return hitResult->GetDist() != FLT_MAX;
+	}
+	return false;
+}
+
+/*---------------------------------------------------------------------------*/ 
+template<class TObject>
+bool TKdTree<TObject>::HitTest(const TVector& orig, const TVector& dir, const TVector& scale, HitResult* hitResult) const
+{
+	++g_calls;
+
+	float o[3] = { orig.x, orig.y, orig.z };
+
+	float inv[3];
+	int order[3][2];
+
+	float t_max = FLT_MAX;
+	float t_min = 0;
+
+	for(int axis=0; axis<3; ++axis)
+	{
+		float temp = dir[axis] ? 1/dir[axis] : (dir[axis] < 0 ? -FLT_MAX : FLT_MAX);
+		inv[axis] = temp;
+
+		order[axis][0] = 0 < temp ? 0 : 1;
+		order[axis][1] = 0 < temp ? 1 : 0;
+
+		float left	= (m_aabb.minimum[axis] * scale[axis] - o[axis]) * inv[axis];
+		float right	= (m_aabb.maximum[axis] * scale[axis] - o[axis]) * inv[axis];
+
+		t_max = min(t_max, max(left, right));
+	}
+
+	if(0 <= t_max)
+	{
+		const TKdSplit*	splitList	= &m_splitList[0];
+		const uint*		leafList	= &m_leafList[0];
+		const TObject*	objectList	= &m_objectList[0];
+
+		uint traversal = 0;
+		TTraversalInfo traversalStack[100];
+
+		uint mailbox = 0;
+		uint mailboxStack[8] = { 
+				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
+				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
+		};
+
+		TKdSplit kdSplit = splitList[0];
+
+		while(true)
+		{
+loop:
+			TKdSplit::SPLIT_AXIS axis = kdSplit.GetAxis();
+			if(axis != TKdSplit::SPLIT_END)
+			{
+				++g_nodes;
+
+				float t_at_split = (kdSplit.m_split * scale[axis] - o[axis]) * inv[axis];
+				if(t_max <= t_at_split)
+				{
+					++g_left;
+					kdSplit = splitList[kdSplit.GetChildren() + order[axis][0]];
+				}
+				else if(t_at_split <= t_min)
+				{
+					++g_right;
+					kdSplit = splitList[kdSplit.GetChildren() + order[axis][1]];
+				}
+				else
+				{
+					++g_push;
+					traversalStack[traversal].t_max = t_max;
+					traversalStack[traversal].t_min = t_at_split;
+					traversalStack[traversal].split = splitList[kdSplit.GetChildren() + order[axis][1]];
+					++traversal;
+
+					t_max = t_at_split;
+					kdSplit = splitList[kdSplit.GetChildren() + order[axis][0]];
+				}
+			}
+			else
+			{
+				if(t_min < hitResult->GetDist())
+				{
+					const uint* candidate = leafList + kdSplit.GetChildren();
+
+					for(UINT i=0; i<kdSplit.m_count; ++i)
+					{
+						int index = candidate[i];
+
+						if(	mailboxStack[0] == index || mailboxStack[1] == index
+							|| mailboxStack[2] == index || mailboxStack[3] == index
+							|| mailboxStack[4] == index || mailboxStack[5] == index
+							|| mailboxStack[6] == index || mailboxStack[7] == index
+							)
+						{
+							continue;
+						}
+						else
+						{
+							mailboxStack[mailbox++ & (8-1)] = index;
+						}
+
+						++g_objects;
+
+						TObject::HitResult testResult;
+						if(objectList[index].HitTest(orig, dir, scale, &testResult) && (testResult.GetDist() < hitResult->GetDist()))
+						{
+							hitResult->object	= index;
+							hitResult->result	= testResult;
+						}
+					}
+				}
+				while(traversal)
+				{
+					--traversal;
+					t_min = traversalStack[traversal].t_min;
+
+					if(t_min < hitResult->GetDist())
+					{
+						t_max = traversalStack[traversal].t_max;
+						kdSplit = traversalStack[traversal].split;
+
+						goto loop;
+					}
+				}
+
+				break;
+			}
+		}
+		
+		return hitResult->GetDist() != FLT_MAX;
+	}
+	return false;
+}
+
+/*---------------------------------------------------------------------------*/ 
+template<class TObject>
+bool TKdTree<TObject>::OcclusionTest(const TVector& orig, const TVector& dir) const
+{
+	if(m_leafList.empty())
+	{
+		return false;
+	}
+
+	float o[3] = { orig.x, orig.y, orig.z };
+	float inv[3];
+
+	inv[0] = dir.x ? 1/dir.x : (dir.x < 0 ? -FLT_MAX : FLT_MAX);
+	inv[1] = dir.y ? 1/dir.y : (dir.y < 0 ? -FLT_MAX : FLT_MAX);
+	inv[2] = dir.z ? 1/dir.z : (dir.z < 0 ? -FLT_MAX : FLT_MAX);
+
+	float x_max = dir.x ? max((m_aabb.minimum[0] - o[0]) * inv[0], (m_aabb.maximum[0] - o[0]) * inv[0]) : FLT_MAX;
+	float y_max = dir.y ? max((m_aabb.minimum[1] - o[1]) * inv[1], (m_aabb.maximum[1] - o[1]) * inv[1]) : FLT_MAX;
+	float z_max = dir.z ? max((m_aabb.minimum[2] - o[2]) * inv[2], (m_aabb.maximum[2] - o[2]) * inv[2]) : FLT_MAX;
+
+	float t_max = min(x_max, min(y_max, z_max));
+	float t_min = 0;
+
+	if(0 <= t_max)
+	{
+		const TKdSplit*	splitList	= &m_splitList[0];
+		const uint*		leafList	= &m_leafList[0];
+		const TObject*	objectList	= &m_objectList[0];
+
+		uint offset = 0;
+		uint traversal = 0;
+		TTraversalInfo traversalStack[100];
+
+		int order[3][2];
+
+		uint mailbox = 0;
+		uint mailboxStack[8] = { 
+				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
+				(uint)-1, (uint)-1, (uint)-1, (uint)-1, 
+		};
+
+		for(int axis=0; axis<3; ++axis)
+		{
+			if(0 < inv[axis])
+			{
+				order[axis][0] = 0;
+				order[axis][1] = 1;
+			}
+			else
+			{
+				order[axis][0] = 1;
+				order[axis][1] = 0;
+			}
+		}
+
+		while(true)
+		{
+			TKdSplit::SPLIT_AXIS axis = splitList[offset].GetAxis();
+			UINT children = splitList[offset].GetChildren();
+			if(axis != TKdSplit::SPLIT_END)
+			{
+				float t_at_split = (splitList[offset].m_split - o[axis]) * inv[axis];
+				if(t_max <= t_at_split)
+				{
+					offset = children + order[axis][0];
+				}
+				else if(t_at_split <= t_min)
+				{
+					offset = children + order[axis][1];
+				}
+				else
+				{
+					traversalStack[traversal].t_max = t_max;
+					traversalStack[traversal].t_min = t_at_split;
+					traversalStack[traversal].offset = children + order[axis][1];
+					++traversal;
+
+					t_max = t_at_split;
+					offset = children + order[axis][0];
+				}
+			}
+			else
+			{
+				const uint* candidate = leafList + children;
+
+				for(UINT i=0; i<splitList[offset].m_count; ++i)
+				{
+					int index = candidate[i];
+
+					if(	mailboxStack[0] == index || mailboxStack[1] == index
+						|| mailboxStack[2] == index || mailboxStack[3] == index
+						|| mailboxStack[4] == index || mailboxStack[5] == index
+						|| mailboxStack[6] == index || mailboxStack[7] == index
+						)
+					{
+						continue;
+					}
+					else
+					{
+						mailboxStack[mailbox++ & (8-1)] = index;
+					}
+
+					if(hitList[index].OcclusionTest(orig, dir) == true)
+					{
+						return true;
+					}
+				}
+				if(traversal)
+				{
+					--traversal;
+					t_max = traversalStack[traversal].t_max;
+					t_min = traversalStack[traversal].t_min;
+					offset = traversalStack[traversal].offset;
+				}
+				else
+				{
+					break;
+				}
+			}	
+		}
+	}
+	return false;
+}
+
+/*---------------------------------------------------------------------------*/ 
+template<class TObject>
+bool TKdTree<TObject>::NearestTest(const TVector& orig, float radius, HitResult* hitResult) const
+{
+	if(!m_leafList.empty())
+	{
+		const TKdSplit*	splitList	= &m_splitList[0];
+		const uint*		leafList	= &m_leafList[0];
+		const TObject*	objectList	= &m_objectList[0];
+
+		uint offset = 0;
+		float distance = 0;
+
+		uint traversal = 0;
+		TNearestInfo nearestStack[100];
+
+		while(true)
+		{
+			TKdSplit::SPLIT_AXIS axis	= splitList[offset].GetAxis();
+			UINT children = splitList[offset].GetChildren();
+			if(axis != TKdSplit::SPLIT_END)
+			{
+				if(distance < radius)
+				{
+					float split = splitList[offset].m_split;
+
+					if(orig[axis]+radius < split)
+					{
+						offset		= children+0;
+						distance	= orig[axis] - split;
+					}
+					else if(split < orig[axis]-radius)
+					{
+						offset		= children+1;
+						distance	= split - orig[axis];
+					}
+					else
+					{
+						nearestStack[traversal].offset = children+1;
+						nearestStack[traversal].distance = split - orig[axis];
+						++traversal;
+
+						offset		= children+0;
+						distance	= orig[axis] - split;
+					}
+				}
+				else if(traversal)
+				{
+					--traversal;
+					offset		= nearestStack[traversal].offset;
+					distance	= nearestStack[traversal].distance;
+				}
+				else
+				{
+					return hitResult->GetDist() != FLT_MAX;
+				}
+			}
+			else
+			{
+				const uint* candidate = leafList + children;
+
+				for(UINT i=0; i<splitList[offset].m_count; ++i)
+				{
+					TObject::HitResult testResult;
+					if(objectList[candidate[i]].NearestTest(orig, radius, &testResult) && testResult.GetDist() < radius)
+					{
+						hitResult->object = candidate[i];
+						hitResult->result = testResult;
+						radius = testResult.GetDist();
+					}
+				}
+				if(traversal)
+				{
+					--traversal;
+					offset		= nearestStack[traversal].offset;
+					distance	= nearestStack[traversal].distance;
+				}
+				else
+				{
+					return hitResult->GetDist() != FLT_MAX;
+				}
+			}	
+		}
+		return hitResult->GetDist() != FLT_MAX;
+	}
+	return false;
 }
 
 /*---------------------------------------------------------------------------*/ 

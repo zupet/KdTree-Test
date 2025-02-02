@@ -143,6 +143,12 @@ bool TAABB::HitTest(const float* orig, const float* dir, HitResult* result) cons
 	float mini[3] = { minimum[0] - orig[0], minimum[1] - orig[1], minimum[2] - orig[2] };
 	float maxi[3] = { maximum[0] - orig[0], maximum[1] - orig[1], maximum[2] - orig[2] };
 
+	return HitTest(dir, mini, maxi, result);
+}
+
+/*---------------------------------------------------------------------------*/ 
+bool TAABB::HitTest(const float* dir, const float* mini, const float* maxi, HitResult* result) const
+{
 	float dist = FLT_MAX;
 
 	float delta;
@@ -269,6 +275,13 @@ TVector TAABB::CalcSize() const
 }
 
 /*---------------------------------------------------------------------------*/ 
+float TAABB::CalcArea() const
+{
+	TVector Size = CalcSize();
+	return (Size.x * Size.y + Size.y * Size.z + Size.z * Size.x) * 2;
+}
+
+/*---------------------------------------------------------------------------*/ 
 /*                                                                           */ 
 /*---------------------------------------------------------------------------*/ 
 TTriangle::TTriangle(const TVector& p0, const TVector& p1, const TVector& p2)
@@ -276,93 +289,6 @@ TTriangle::TTriangle(const TVector& p0, const TVector& p1, const TVector& p2)
 	pos0 = p0;
 	pos1 = p1;
 	pos2 = p2;
-}
-
-/*---------------------------------------------------------------------------*/ 
-TTriangle::THit::THit(const TTriangle & triangle)
-{
-	TVector edge1 = triangle.pos1 - triangle.pos0;
-    TVector edge2 = triangle.pos2 - triangle.pos0;
-
-	TVector normal;
-	TCross(&normal, &edge1, &edge2);
-
-	int u,v,w;
-	if(abs(normal.x) < abs(normal.y))
-	{
-		// x<y
-		if(abs(normal.z) < abs(normal.x))
-		{
-			// z<x<y
-			u = 0;
-			v = 2;
-			w = 1;
-		}
-		else
-		{
-			// x<=z && x<y
-			if(abs(normal.z) < abs(normal.y))
-			{
-				// x<=z<y
-				u = 0;
-				v = 2;
-				w = 1;
-			}
-			else
-			{
-				// x<=y<=z
-				u = 0;
-				v = 1;
-				w = 2;
-			}
-
-		}
-	}
-	else
-	{
-		// y<=x
-		if(abs(normal.z) < abs(normal.y))
-		{
-			// z<y<=x
-			u = 1;
-			v = 2;
-			w = 0;
-		}
-		else
-		{
-			// y<=z && y<=x
-			if(abs(normal.z) < abs(normal.x))
-			{
-				// y<=z<x
-				u = 1;
-				v = 2;
-				w = 0;
-			}
-			else
-			{
-				// y<=x<=z
-				u = 0;
-				v = 1;
-				w = 2;
-			}
-		}
-	}
-
-	float sign = 1.0f;
-	for(int i=0; i<w; ++i) sign *= -1.0f;
-
-	float nw = normal[w];
-	nu = normal[u] / nw;
-	nv = normal[v] / nw;
-	pu = triangle.pos0[u];
-	pv = triangle.pos0[v];
-	np = (nu*pu + nv*pv + triangle.pos0[w]);
-	e0u = sign * edge1[u] / nw;
-	e0v = sign * edge1[v] / nw;
-	e1u = sign * edge2[u] / nw;
-	e1v = sign * edge2[v] / nw;
-
-	ci = w;
 }
 
 /*---------------------------------------------------------------------------*/ 
@@ -462,9 +388,101 @@ bool TTriangle::IntersectTest(const TAABB& aabb) const
 }
 
 /*---------------------------------------------------------------------------*/ 
-bool TTriangle::THit::HitTest(const TVector& orig, const TVector& dir, HitResult* result) const
+bool TTriangle::HitTest(const TVector& orig, const TVector& dir, HitResult* result) const
 {
-	int u, v, w;
+	return HitTest(pos0, pos1, pos2, orig, dir, result);
+}
+
+bool TTriangle::HitTest(const TVector& orig, const TVector& dir, const TVector& scale, HitResult* result) const
+{
+	return HitTest(pos0 * scale, pos1 * scale, pos2 * scale, orig, dir, result);
+}
+
+/*---------------------------------------------------------------------------*/ 
+bool TTriangle::HitTest(const TVector& p0, const TVector& p1, const TVector& p2, const TVector& orig, const TVector& dir, HitResult* result) const
+{
+	int u,v,w;
+	TVector edge1 = p1 - p0;
+    TVector edge2 = p2 - p0;
+
+	TVector normal;
+	TCross(&normal, &edge1, &edge2);
+
+	if(abs(normal.x) < abs(normal.y))
+	{
+		// x<y
+		if(abs(normal.z) < abs(normal.x))
+		{
+			// z<x<y
+			u = 0;
+			v = 2;
+			w = 1;
+		}
+		else
+		{
+			// x<=z && x<y
+			if(abs(normal.z) < abs(normal.y))
+			{
+				// x<=z<y
+				u = 0;
+				v = 2;
+				w = 1;
+			}
+			else
+			{
+				// x<=y<=z
+				u = 0;
+				v = 1;
+				w = 2;
+			}
+
+		}
+	}
+	else
+	{
+		// y<=x
+		if(abs(normal.z) < abs(normal.y))
+		{
+			// z<y<=x
+			u = 1;
+			v = 2;
+			w = 0;
+		}
+		else
+		{
+			// y<=z && y<=x
+			if(abs(normal.z) < abs(normal.x))
+			{
+				// y<=z<x
+				u = 1;
+				v = 2;
+				w = 0;
+			}
+			else
+			{
+				// y<=x<=z
+				u = 0;
+				v = 1;
+				w = 2;
+			}
+		}
+	}
+
+	float sign = 1.0f;
+	for(int i=0; i<w; ++i) sign *= -1.0f;
+
+	float nw = normal[w];
+	float nu = normal[u] / nw;
+	float nv = normal[v] / nw;
+	float pu = p0[u];
+	float pv = p0[v];
+	float np = (nu*pu + nv*pv + p0[w]);
+	float e0u = sign * edge1[u] / nw;
+	float e0v = sign * edge1[v] / nw;
+	float e1u = sign * edge2[u] / nw;
+	float e1v = sign * edge2[v] / nw;
+	int ci = w;
+
 	w = ci;
 	u = w == 0 ? 1 : 0;
 	v = w == 2 ? 1 : 2;
@@ -500,7 +518,7 @@ bool TTriangle::THit::HitTest(const TVector& orig, const TVector& dir, HitResult
 }
 
 /*---------------------------------------------------------------------------*/ 
-bool TTriangle::THit::OcclusionTest(const TVector& orig, const TVector& dir) const
+bool TTriangle::OcclusionTest(const TVector& orig, const TVector& dir) const
 {
 	HitResult result;
 
@@ -585,183 +603,6 @@ bool TTriangle::NearestTest(const TVector& orig, float radius, HitResult* result
 			}
 		}
 	}
-}
-
-/*---------------------------------------------------------------------------*/ 
-__m128	TTriangle::THit::HitTest4(__m128 mask, const TPoint4& orig, const TVector& d, HitResult4* result) const
-{
-	int u, v, w;
-	w = ci;
-	u = w == 0 ? 1 : 0;
-	v = w == 2 ? 1 : 2;
-
-	__m128 nu = _mm_load_ps1(&this->nu);
-	__m128 np = _mm_load_ps1(&this->np);
-	__m128 nv = _mm_load_ps1(&this->nv);
-	__m128 pu = _mm_load_ps1(&this->pu);
-	__m128 pv = _mm_load_ps1(&this->pv);
-	__m128 e0u = _mm_load_ps1(&this->e0u);
-	__m128 e0v = _mm_load_ps1(&this->e0v);
-	__m128 e1u = _mm_load_ps1(&this->e1u);
-	__m128 e1v = _mm_load_ps1(&this->e1v);
-
-	__m128 ou = orig[u];
-	__m128 ov = orig[v];
-	__m128 ow = orig[w];
-	__m128 du = _mm_load_ps1(&d[u]);
-	__m128 dv = _mm_load_ps1(&d[v]);
-	__m128 dw = _mm_load_ps1(&d[w]);
-
-	__m128 dett = np -(ou*nu+ov*nv+ow);
-	__m128 det = du*nu+dv*nv+dw;
-	__m128 Du = du*dett - (pu-ou)*det;
-	__m128 Dv = dv*dett - (pv-ov)*det;
-	__m128 detu = (e1v*Du - e1u*Dv);
-	__m128 detv = (e0u*Dv - e0v*Du);
-
-	__m128 tmpdet0 = det - detu - detv;
-
-	__m128 detMask = _mm_xor_ps(_mm_xor_ps(tmpdet0, detv) | _mm_xor_ps(detv, detu), g_one4) > _mm_setzero_ps();
-
-	mask = mask & detMask;
-
-	__m128 rdet = _mm_rcp_ps(det);
-
-	result->t = dett * rdet;
-	result->u = detu * rdet;
-	result->v = detv * rdet;
-
-	return mask & (result->t > _mm_setzero_ps());
-}
-
-/*---------------------------------------------------------------------------*/ 
-__m128 TTriangle::THit::OcclusionTest4(__m128 mask, const TPoint4& orig, const TVector& dir) const
-{
-	HitResult4 result;
-	return HitTest4(mask, orig, dir, &result);
-}
-
-/*---------------------------------------------------------------------------*/ 
-__m128 TTriangle::NearestTest4(__m128 mask, const TPoint4& orig, __m128 radius, HitResult4* result) const
-{
-	TPoint4 p0(pos0);
-	TPoint4 p1(pos1);
-	TPoint4 p2(pos2);
-
-	__m128 u0, u1, u2;
-
-	__m128 d0 = ::CalcDistance4(p0, p1, orig, &u0);
-	__m128 d1 = ::CalcDistance4(p1, p2, orig, &u1);
-	__m128 d2 = ::CalcDistance4(p2, p0, orig, &u2);
-
-	__m128 minimum = _mm_min_ps(d0, _mm_min_ps(d1, d2));
-
-	__m128 minMask;
-	
-	result->u = u0;
-	result->v = g_zero4;
-	result->t = d0;
-
-	minMask = (minimum == d1);
-	result->u = _mm_merge_ps(minMask, result->u, (g_one4 - u1));
-	result->v = _mm_merge_ps(minMask, result->v, u1);
-	result->t = _mm_merge_ps(minMask, result->t, d1);
-
-	minMask = (minimum == d2);
-	result->u = _mm_merge_ps(minMask, result->u, g_zero4);
-	result->v = _mm_merge_ps(minMask, result->v, g_one4 - u2);
-	result->t = _mm_merge_ps(minMask, result->t, d2);
-
-	return mask & (result->t < radius);
-}
-
-/*---------------------------------------------------------------------------*/ 
-__m256 TTriangle::THit::HitTest8(__m256 mask, const TPoint8& orig, const TVector& d, HitResult8* result) const
-{
-	int u, v, w;
-	w = ci;
-	u = w == 0 ? 1 : 0;
-	v = w == 2 ? 1 : 2;
-
-	__m256 nu = _mm256_broadcast_ss(&this->nu);
-	__m256 np = _mm256_broadcast_ss(&this->np);
-	__m256 nv = _mm256_broadcast_ss(&this->nv);
-	__m256 pu = _mm256_broadcast_ss(&this->pu);
-	__m256 pv = _mm256_broadcast_ss(&this->pv);
-	__m256 e0u = _mm256_broadcast_ss(&this->e0u);
-	__m256 e0v = _mm256_broadcast_ss(&this->e0v);
-	__m256 e1u = _mm256_broadcast_ss(&this->e1u);
-	__m256 e1v = _mm256_broadcast_ss(&this->e1v);
-
-	__m256 ou = orig[u];
-	__m256 ov = orig[v];
-	__m256 ow = orig[w];
-	__m256 du = _mm256_broadcast_ss(&d[u]);
-	__m256 dv = _mm256_broadcast_ss(&d[v]);
-	__m256 dw = _mm256_broadcast_ss(&d[w]);
-
-	__m256 dett = np -(ou*nu+ov*nv+ow);
-	__m256 det = du*nu+dv*nv+dw;
-	__m256 Du = du*dett - (pu-ou)*det;
-	__m256 Dv = dv*dett - (pv-ov)*det;
-	__m256 detu = (e1v*Du - e1u*Dv);
-	__m256 detv = (e0u*Dv - e0v*Du);
-
-	__m256 tmpdet0 = det - detu - detv;
-
-	__m256 detMask = _mm256_xor_ps(_mm256_xor_ps(tmpdet0, detv) | _mm256_xor_ps(detv, detu), g_one8) > _mm256_setzero_ps();
-
-	mask = mask & detMask;
-
-	__m256 rdet = _mm256_rcp_ps(det);
-
-	result->t = dett * rdet;
-	result->u = detu * rdet;
-	result->v = detv * rdet;
-
-	return mask & (result->t > _mm256_setzero_ps());
-/**/ 
-}
-
-/*---------------------------------------------------------------------------*/ 
-__m256 TTriangle::THit::OcclusionTest8(const __m256& mask, const TPoint8& orig, const TVector& dir) const
-{
-	HitResult8 result;
-	return HitTest8(mask, orig, dir, &result);
-}
-
-/*---------------------------------------------------------------------------*/ 
-__m256 TTriangle::NearestTest8(const __m256& mask, const TPoint8& orig, const __m256& radius, HitResult8* result) const
-{
-	TPoint8 p0(pos0);
-	TPoint8 p1(pos1);
-	TPoint8 p2(pos2);
-
-	__m256 u0, u1, u2;
-
-	__m256 d0 = ::CalcDistance8(p0, p1, orig, &u0);
-	__m256 d1 = ::CalcDistance8(p1, p2, orig, &u1);
-	__m256 d2 = ::CalcDistance8(p2, p0, orig, &u2);
-
-	__m256 minimum = _mm256_min_ps(d0, _mm256_min_ps(d1, d2));
-
-	__m256 minMask;
-	
-	result->u = u0;
-	result->v = _mm256_setzero_ps();
-	result->t = d0;
-
-	minMask = (minimum == d1);
-	result->u = _mm256_merge_ps(minMask, result->u, (g_one8 - u1));
-	result->v = _mm256_merge_ps(minMask, result->v, u1);
-	result->t = _mm256_merge_ps(minMask, result->t, d1);
-
-	minMask = (minimum == d2);
-	result->u = _mm256_merge_ps(minMask, result->u, _mm256_setzero_ps());
-	result->v = _mm256_merge_ps(minMask, result->v, g_one8 - u2);
-	result->t = _mm256_merge_ps(minMask, result->t, d2);
-
-	return mask & (result->t < radius);
 }
 
 /*---------------------------------------------------------------------------*/ 

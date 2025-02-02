@@ -5,15 +5,9 @@
 #include "KdTree Test.h"
 
 #include "t_kdtree.h"
+#include "t_bvhtree.h"
 
-//#define SINGLE_TRACE
-#define QUAD_TRACE
-
-#define DIFFUSE_LIGHTING
-//#define DEPTH_LIGHTING
-//#define PROFILE
-
-#define TEST_LOOP 20
+#define TEST_LOOP 100
 
 #ifdef PROFILE
 #include "ittnotify.h"
@@ -53,6 +47,7 @@ normal_list					g_normalList;
 triangle_list				g_triangleList;
 
 TKdTree<TTriangle>			g_kdTree;
+TBVHTree<TTriangle>			g_bvhTree;
 
 int					g_width;
 int					g_height;
@@ -141,6 +136,10 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int nCmdShow)
 	g_kdTree.SaveKdTree(_T("bunny.kdt"));
 	g_kdTree.LoadKdTree(_T("bunny.kdt"));
 
+	//g_bvhTree.BuildTree(20);
+	//g_bvhTree.SaveTree(_T("bunny.kdt"));
+	//g_bvhTree.LoadTree(_T("bunny.kdt"));
+
 	SetBitmapSize(800, 800);
 
 	QueryPerformanceCounter((LARGE_INTEGER*)&start);
@@ -149,173 +148,43 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int nCmdShow)
 	__itt_resume();
 #endif //PROFILE
 
+	TVector scale(1.0f, 1.0f, 1.0f);
 	for(int iter=0; iter<TEST_LOOP; ++iter)
 	{
 
-#if defined(SINGLE_TRACE)
-	/* Single 1 Ray Tracing */ 
+		/* Single 1 Ray Tracing */
 
-	TVector light;
-	TNormalize(&light, &TVector(1,1,1));
+		TVector light;
+		TNormalize(&light, &TVector(1, 1, 1));
 
-	BYTE* line = &g_bitmap[0];
+		BYTE* line = &g_bitmap[0];
 
-	for(int y=0; y<g_height; ++y)
-	{
-		for(int x=0; x<g_width; ++x)
+		for (int y = 0; y < g_height; ++y)
 		{
-			TKdTree<TTriangle>::HitResult result;
-			TVector orig((float)x, (float)y, -500.0f);
-			TVector dir(0,0,1);
-
-			if(g_kdTree.HitTest(orig, dir, &result))
+			for (int x = 0; x < g_width; ++x)
 			{
-#ifdef DIFFUSE_LIGHTING
-				TVector normal =	g_normalList[result.object].n0 * (1-result.result.u-result.result.v) 
-										+ g_normalList[result.object].n1 * result.result.u 
-										+ g_normalList[result.object].n2 * result.result.v;
+				TKdTree<TTriangle>::HitResult result;
+				TVector orig((float)x, (float)y, -500.0f);
+				TVector dir(0, 0, 1);
 
-				float intensity = min(1.0f, max(0.0f, TDot(&normal, &light)));
+				//if(g_kdTree.HitTest(orig, dir, scale, &result))
+				if (g_kdTree.HitTest(orig, dir, &result))
+				{
+					TVector normal = g_normalList[result.object].n0 * (1 - result.result.u - result.result.v)
+						+ g_normalList[result.object].n1 * result.result.u
+						+ g_normalList[result.object].n2 * result.result.v;
 
-				line[x] = (BYTE)(intensity * 255.0f);
-#endif
+					float intensity = min(1.0f, max(0.0f, TDot(&normal, &light)));
 
-#ifdef DEPTH_LIGHTING
-				line[x] = (BYTE)(result.GetDist() * 0.25f);
-#endif
+					line[x] = (BYTE)(intensity * 255.0f);
+				}
+				else
+				{
+					line[x] = 0;
+				}
 			}
-			else
-			{
-				line[x] = 0;
-			}
+			line += g_width;
 		}
-		line += g_width;
-	}
-#elif defined(QUAD_TRACE)
-	/* SSE 4 Ray Packet Tracing */ 
-
-	TPoint4 light(g_one4, g_one4, g_one4);
-	TPoint4Normalize(&light, &light);
-
-	BYTE* line0 = &g_bitmap[0];
-	BYTE* line1 = line0 + g_width;
-	TriangleNormal* normalList = &g_normalList[0];
-
-	for(int y=0; y<g_height; y+=2)
-	{
-		for(int x=0; x<g_width; x+=2)
-		{
-			__m128 orig[3] = {	_mm_set_ps(x+0.0f,x+1.0f,x+0.0f,x+1.0f),
-								_mm_set_ps(y+0.0f,y+0.0f,y+1.0f,y+1.0f),
-								_mm_set1_ps(-500.0f),  };
-			TVector dir(0,0,1);
-
-			TKdTree<TTriangle>::HitResult4 result;
-			__m128 hitMask = g_kdTree.HitTest4(g_mask4, orig, dir, &result);
-
-#ifdef DIFFUSE_LIGHTING
-			__declspec(align(16)) DWORD object[4];
-			_mm_store_ps((float*)object, result.object & hitMask);
-
-			TPoint4 n0(normalList[object[3]].n0, normalList[object[2]].n0, normalList[object[1]].n0, normalList[object[0]].n0);
-			TPoint4 n1(normalList[object[3]].n1, normalList[object[2]].n1, normalList[object[1]].n1, normalList[object[0]].n1);
-			TPoint4 n2(normalList[object[3]].n2, normalList[object[2]].n2, normalList[object[1]].n2, normalList[object[0]].n2);
-
-			TPoint4 normal = n0 * (g_one4-result.result.u-result.result.v) + n1 * result.result.u + n2 * result.result.v;
-
-			__m128 intensity = hitMask & _mm_min_ps(g_one4, _mm_max_ps(g_zero4, TPoint4Dot(&light, &normal)));
-
-			__declspec(align(16)) BYTE value[16];
-			_mm_store_si128((__m128i*)value, _mm_packus_epi16(_mm_packs_epi32(_mm_cvtps_epi32(intensity * _mm_set1_ps(255.0f)), _mm_setzero_si128()), _mm_setzero_si128()));
-
-			line0[x+0] = (BYTE)value[3];
-			line0[x+1] = (BYTE)value[2];
-			line1[x+0] = (BYTE)value[1];
-			line1[x+1] = (BYTE)value[0];
-#endif
-
-#ifdef DEPTH_LIGHTING
-			__m128 depth = hitMask & result.GetDist();
-
-			__declspec(align(16)) BYTE value[16];
-			_mm_store_si128((__m128i*)value, _mm_packus_epi16(_mm_packs_epi32(_mm_cvtps_epi32(depth * _mm_set1_ps(0.25f)), _mm_setzero_si128()), _mm_setzero_si128()));
-
-			line0[x+0] = (BYTE)value[3];
-			line0[x+1] = (BYTE)value[2];
-			line1[x+0] = (BYTE)value[1];
-			line1[x+1] = (BYTE)value[0];
-#endif
-		}
-		line0 += g_width * 2;
-		line1 += g_width * 2;
-	}
-#else
-	/* SSE 8 Ray Packet Tracing */ 
-
-	TPoint8 light(g_one8, g_one8, g_one8);
-	TPoint8Normalize(&light, &light);
-
-	BYTE* line0 = &g_bitmap[0];
-	BYTE* line1 = line0 + g_width;
-	TriangleNormal* normalList = &g_normalList[0];
-
-	for(int y=0; y<g_height; y+=2)
-	{
-		for(int x=0; x<g_width; x+=4)
-		{
-			__m256 orig[3] = {	_mm256_set_ps(x+0.0f,x+1.0f,x+2.0f,x+3.0f,x+0.0f,x+1.0f,x+2.0f,x+3.0f),
-								_mm256_set_ps(y+0.0f,y+0.0f,y+0.0f,y+0.0f,y+1.0f,y+1.0f,y+1.0f,y+1.0f),
-								_mm256_set1_ps(-500.0f),  };
-			TVector dir(0,0,1);
-
-			TKdTree<TTriangle>::HitResult8 result;
-			__m256 hitMask = g_kdTree.HitTest8(g_mask8, orig, dir, &result);
-
-#ifdef DIFFUSE_LIGHTING
-			__declspec(align(32)) DWORD object[8];
-			_mm256_store_ps((float*)object, result.object & hitMask);
-
-			TPoint8 n0(normalList[object[7]].n0, normalList[object[6]].n0, normalList[object[5]].n0, normalList[object[4]].n0, normalList[object[3]].n0, normalList[object[2]].n0, normalList[object[1]].n0, normalList[object[0]].n0);
-			TPoint8 n1(normalList[object[7]].n1, normalList[object[6]].n1, normalList[object[5]].n1, normalList[object[4]].n1, normalList[object[3]].n1, normalList[object[2]].n1, normalList[object[1]].n1, normalList[object[0]].n1);
-			TPoint8 n2(normalList[object[7]].n2, normalList[object[6]].n2, normalList[object[5]].n2, normalList[object[4]].n2, normalList[object[3]].n2, normalList[object[2]].n2, normalList[object[1]].n2, normalList[object[0]].n2);
-
-			TPoint8 normal = n0 * (g_one8-result.result.u-result.result.v) + n1 * result.result.u + n2 * result.result.v;
-
-			__m256 intensity = hitMask & _mm256_min_ps(g_one8, _mm256_max_ps(g_zero8, TPoint8Dot(&light, &normal)));
-
-			__declspec(align(32)) BYTE value[32];
-			_mm256_store_si256((__m256i *)value, _mm256_cvtps_epi32(intensity * _mm256_set1_ps(255.0f)));
-
-			line0[x+0] = (BYTE)value[28];
-			line0[x+1] = (BYTE)value[24];
-			line0[x+2] = (BYTE)value[20];
-			line0[x+3] = (BYTE)value[16];
-			line1[x+0] = (BYTE)value[12];
-			line1[x+1] = (BYTE)value[8];
-			line1[x+2] = (BYTE)value[4];
-			line1[x+3] = (BYTE)value[0];
-#endif
-
-#ifdef DEPTH_LIGHTING
-			__m256 depth = hitMask & result.GetDist();
-
-			__declspec(align(32)) BYTE value[32];
-			_mm256_store_si256((__m256i *)value, _mm256_cvtps_epi32(depth * _mm256_set1_ps(0.25f)));
-
-			line0[x+0] = (BYTE)value[28];
-			line0[x+1] = (BYTE)value[24];
-			line0[x+2] = (BYTE)value[20];
-			line0[x+3] = (BYTE)value[16];
-			line1[x+0] = (BYTE)value[12];
-			line1[x+1] = (BYTE)value[8];
-			line1[x+2] = (BYTE)value[4];
-			line1[x+3] = (BYTE)value[0];
-#endif
-		}
-		line0 += g_width * 2;
-		line1 += g_width * 2;
-	}
-#endif //SINGLE_TRACE
 
 	}
 
@@ -440,7 +309,7 @@ void LoadBunny()
 			fscanf_s(file, "%d %d %d %d", &number, &p0, &p1, &p2);
 			g_triangleList.push_back(TTriangle(vertexList[p0], vertexList[p1], vertexList[p2]));
 			g_kdTree.AddObject(TTriangle(vertexList[p0], vertexList[p1], vertexList[p2]));
-
+			//g_bvhTree.AddObject(TTriangle(vertexList[p0], vertexList[p1], vertexList[p2]));
 			Face face;
 			face.p0 = p0;
 			face.p1 = p1;

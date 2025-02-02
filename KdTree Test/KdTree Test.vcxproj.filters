@@ -47,6 +47,15 @@
     <ClInclude Include="t_vector.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="t_triangle.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="t_aabb.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="t_bvhtree.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="KdTree Test.ico">
@@ -56,6 +65,9 @@
       <Filter>Resource Files</Filter>
     </None>
     <None Include="t_kdtree.inl">
+      <Filter>Header Files</Filter>
+    </None>
+    <None Include="t_bvhtree.inl">
       <Filter>Header Files</Filter>
     </None>
   </ItemGroup>

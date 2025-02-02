@@ -192,14 +192,18 @@
     <ClInclude Include="KdTree Test.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="stdafx.h" />
+    <ClInclude Include="t_aabb.h" />
+    <ClInclude Include="t_bvhtree.h" />
     <ClInclude Include="t_kdtree.h" />
     <ClInclude Include="t_sse.h" />
+    <ClInclude Include="t_triangle.h" />
     <ClInclude Include="t_vector.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="KdTree Test.ico" />
     <None Include="small.ico" />
     <None Include="t_kdtree.inl" />
+    <None Include="t_bvhtree.inl" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="KdTree Test.rc" />

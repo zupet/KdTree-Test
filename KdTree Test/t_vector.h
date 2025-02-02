@@ -30,6 +30,10 @@ struct TVector
 	{
 		return TVector(x * v, y * v, z * v);
 	}
+	TVector operator* (const TVector& v) const
+	{
+		return TVector(x * v.x, y * v.y, z * v.z);
+	}
 	TVector operator/ (float v) const
 	{
 		return TVector(x / v, y / v, z / v);

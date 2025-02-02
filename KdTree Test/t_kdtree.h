@@ -5,125 +5,10 @@
 #define _T_KDTREE_H_
 
 #include "t_sse.h"
+#include "t_aabb.h"
+#include "t_triangle.h"
 
 typedef unsigned int	uint;
-
-/*---------------------------------------------------------------------------*/ 
-struct TAABB
-{
-	struct HitResult
-	{
-		HitResult() :t(FLT_MAX) {}
-		inline float GetDist() { return t; }
-		float t;
-	};
-
-	TAABB();
-	TAABB(const float* mini, const float* maxi);
-
-	void		ResetAABB();
-	void		AddPoint(const float* p);
-	void		AddAABB(const TAABB& aabb);
-
-	TAABB		SplitLeft(int n, float split) const;
-	TAABB		SplitRight(int n, float split) const;
-
-	bool		IntersectTest(const TAABB& aabb) const;
-
-	bool		HitTest(const float* orig, const float* dir, HitResult* result) const;
-
-	TAABB		operator+(const float pos[3]) const;
-
-	float		minimum[3];
-	float		maximum[3];
-
-	TVector	CalcCenter() const;
-	float		CalcRadius() const;
-	TVector	CalcSize() const;
-};
-
-typedef	std::vector<TAABB>		aabb_list;
-typedef	aabb_list::iterator		aabb_list_iter;
-
-/*---------------------------------------------------------------------------*/ 
-struct TTriangle
-{
-	struct HitResult
-	{
-		HitResult() :t(FLT_MAX) {}
-		inline float GetDist() { return t; }
-		float u, v, t;
-	};
-
-	struct HitResult4
-	{
-		HitResult4() : t(g_fltMax4) {}
-		inline __m128 GetDist() { return t; }
-		inline void MergeResult(const __m128& mask, const HitResult4& result)
-		{
-			u = _mm_merge_ps(mask, u, result.u);
-			v = _mm_merge_ps(mask, v, result.v);
-			t = _mm_merge_ps(mask, t, result.t);
-		}
-		__m128 u, v, t;
-	};
-
-	struct HitResult8
-	{
-		HitResult8() : t(g_fltMax8) {}
-		inline __m256 GetDist() { return t; }
-		inline void MergeResult(const __m256& mask, const HitResult8& result)
-		{
-			u = _mm256_merge_ps(mask, u, result.u);
-			v = _mm256_merge_ps(mask, v, result.v);
-			t = _mm256_merge_ps(mask, t, result.t);
-		}
-
-		__m256 u, v, t;
-	};
-
-	struct THit
-	{
-		THit() {}
-
-		THit(const TTriangle & triangle);
-
-		bool	HitTest(const TVector& orig, const TVector& dir, HitResult* result) const;
-		bool	OcclusionTest(const TVector& orig, const TVector& dir) const;
-
-		__m128	HitTest4(__m128 mask, const TPoint4& orig, const TVector& dir, HitResult4* result) const;
-		__m128	OcclusionTest4(__m128 mask, const TPoint4& orig, const TVector& dir) const;
-
-		__m256	HitTest8(__m256 mask, const TPoint8& orig, const TVector& dir, HitResult8* result) const;
-		__m256	OcclusionTest8(const __m256& mask, const TPoint8& orig, const TVector& dir) const;
-
-		float nu; //used to store normal data
-		float nv; //used to store normal data
-		float np; //used to store vertex data
-		float pu; //used to store vertex data
-		float pv; //used to store vertex data
-		int ci; //used to store edges data
-		float e0u; //used to store edges data
-		float e0v; //used to store edges data
-		float e1u; //used to store edges data
-		float e1v; //used to store edges data
-	};
-
-	TTriangle() {}
-
-	TTriangle(const TVector& p0, const TVector& p1, const TVector& p2);
-
-	TAABB	GetAABB() const;
-	bool	IntersectTest(const TAABB& aabb) const;
-
-	bool	NearestTest(const TVector& orig, float radius, HitResult* result) const;
-	__m128	NearestTest4(__m128 mask, const TPoint4& orig, __m128 radius, HitResult4* result) const;
-	__m256	NearestTest8(const __m256& mask, const TPoint8& orig, const __m256& radius, HitResult8* result) const;
-
-	TVector pos0;
-	TVector pos1;
-	TVector pos2;
-};
 
 /*---------------------------------------------------------------------------*/ 
 struct TKdEvent
@@ -258,16 +143,9 @@ public:
 
 	void			BuildTree(UINT depth=UINT_MAX);
 	bool			HitTest(const TVector& orig, const TVector& dir, HitResult* result) const;
+	bool			HitTest(const TVector& orig, const TVector& dir, const TVector& scale, HitResult* result) const;
 	bool			OcclusionTest(const TVector& orig, const TVector& dir) const;
 	bool			NearestTest(const TVector& orig, float radius, HitResult* result) const;
-
-	__m128			HitTest4(__m128 mask, const TPoint4& orig, const TVector& dir, HitResult4* result) const;
-	__m128			OcclusionTest4(__m128 mask, const TPoint4& orig, const TVector& dir) const;
-	__m128			NearestTest4(__m128 mask, const TPoint4& orig, float radius, HitResult4* result) const;
-
-	__m256			HitTest8(const __m256& mask, const TPoint8& orig, const TVector& dir, HitResult8* result) const;
-	__m256			OcclusionTest8(const __m256& mask, const TPoint8& orig, const TVector& dir) const;
-	__m256			NearestTest8(const __m256& mask, const TPoint8& orig, float radius, HitResult8* result) const;
 
 	const TAABB&	GetAABB() const { return m_aabb; }
 	bool			IsEmpty() const { return m_leafList.empty(); }
@@ -277,7 +155,6 @@ public:
 
 protected:
 	void			BuildTree(uint tree, const kd_event_list& xList, const kd_event_list& yList, const kd_event_list& zList, const TAABB& aabb, const aabb_list& aabbList, UINT depth);
-	uint			InitKdSplit(uint tree);
 	float			CalcMinSAH(TKdSplit::SPLIT_AXIS axis, const kd_event_list& splitList, const TAABB& aabb, float* minSplit);
 	float			CalcSAH(uint n_l, uint n_c, uint n_r, float p_l, float p_r);
 
@@ -285,12 +162,6 @@ protected:
 	typedef	typename object_list::iterator	object_list_iter;
 
 	object_list			m_objectList;
-
-	typedef	typename TObject::THit			THit;
-	typedef	std::vector<THit>				hit_list;
-	typedef	typename hit_list::iterator		hit_list_iter;
-
-	hit_list			m_hitList;
 
 	typedef	std::vector<TKdSplit>			split_list;
 	typedef	split_list::iterator			split_list_iter;
